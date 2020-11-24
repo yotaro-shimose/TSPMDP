@@ -59,7 +59,7 @@ def test_env_synchronization():
     copy.import_states(original.export_states())
     original_sum = 0
     copy_sum = 0
-    actions = [1, 2, 3, 4, 5, 6, 7, 8, 9, 0]
+    actions = [1, 2, 3, 4, 5, 6, 7, 8, 9]
     for i in range(len(actions)):
         action = actions[i]
         action = tf.constant([action], dtype=tf.int32)

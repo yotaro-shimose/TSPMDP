@@ -6,3 +6,11 @@ __pycache__
 
 # pytest_cache
 .pytest_cache
+
+# tensorboard
+events.out.tfevents.*
+
+# weight data
+.data-*
+.index
+checkpoint
