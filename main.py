@@ -1,8 +1,10 @@
-from tspmdp.modules.model import GraphAttentionNetwork, WouterAttentionNetwork
-from tspmdp.reinforce.reinforce import Reinforce
-from tspmdp.logger import TFLogger
 import datetime
 import pathlib
+
+from tspmdp.logger import TFLogger
+from tspmdp.modules.model import (GraphAttentionNetwork, GTrXLAttentionNetwork,
+                                  WouterAttentionNetwork)
+from tspmdp.reinforce.reinforce import Reinforce
 
 if __name__ == '__main__':
     d_model = 128
@@ -12,24 +14,33 @@ if __name__ == '__main__':
     th_range = 10
     d_hidden = 128
 
-    def network_builder():
-        return GraphAttentionNetwork(
-            d_model=d_model,
-            depth=d_key,
-            n_heads=n_heads,
-            d_key=d_key,
-            d_hidden=d_hidden,
-            th_range=th_range
-        )
     # def network_builder():
-    #     return WouterAttentionNetwork(
+    #     return GraphAttentionNetwork(
     #         d_model=d_model,
-    #         depth=d_key,
+    #         depth=depth,
     #         n_heads=n_heads,
     #         d_key=d_key,
     #         d_hidden=d_hidden,
     #         th_range=th_range
     #     )
+    # def network_builder():
+    #     return WouterAttentionNetwork(
+    #         d_model=d_model,
+    #         depth=depth,
+    #         n_heads=n_heads,
+    #         d_key=d_key,
+    #         d_hidden=d_hidden,
+    #         th_range=th_range
+    #     )
+    def network_builder():
+        return GTrXLAttentionNetwork(
+            d_model=d_model,
+            depth=depth,
+            n_heads=n_heads,
+            d_key=d_key,
+            d_hidden=d_hidden,
+            th_range=th_range
+        )
     date = datetime.datetime.today().strftime("%Y%m%d%H%M%S/")
     log_path = str(pathlib.Path("./logs/") / "REINFORCE" / date)
     logger = TFLogger(log_path)
