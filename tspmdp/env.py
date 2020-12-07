@@ -17,13 +17,8 @@ class TSPMDP(tf.Module):
             self,
             batch_size: int = 14,
             n_nodes: int = 20,
-            seed: int = None
     ):
-        # random generator
-        if seed is None:
-            self.rand_generator = tf.random.Generator.from_non_deterministic_state()
-        else:
-            self.rand_generator = tf.random.Generator.from_seed(seed)
+
         # 1 for depo
         # Per instance variables
         # B, N, 2 (2 for x, y)
@@ -105,7 +100,7 @@ class TSPMDP(tf.Module):
     @tf.function
     def reset(self):
         self.coordinates.assign(
-            self.rand_generator.uniform(self.coordinates.shape))
+            tf.random.uniform(self.coordinates.shape))
         # B
         self.depos.assign(self._init_depos())
         # B, N
@@ -166,4 +161,4 @@ class TSPMDP(tf.Module):
             self.state_dict[key].assign(value)
 
     def export_states(self):
-        return tree.map_structure(tf.identity, self.state_dict)
+        return tf.nest.map_structure(tf.identity, self.state_dict)

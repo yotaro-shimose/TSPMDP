@@ -5,6 +5,8 @@ import tensorflow_probability as tfp
 from tspmdp.env import TSPMDP
 from tspmdp.modules.functions import int_not, sample_action
 
+tf.config.experimental_run_functions_eagerly(True)
+
 
 @tf.function
 def ttest_smaller(x: tf.Tensor, y: tf.Tensor, significance: float = tf.constant(0.05)):

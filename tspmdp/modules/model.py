@@ -1,8 +1,47 @@
 import tensorflow as tf
 from typing import List
 
-from tspmdp.modules.graph_encoder import GraphEncoder, WouterEncoder, GTrXLEncoder
+from tspmdp.modules.graph_encoder import (
+    GraphEncoder, WouterEncoder, GTrXLEncoder, LinearGraphEncoder)
+
 from tspmdp.modules.decoder import PolicyDecoder, WouterDecoder
+
+
+class LinearGraphAttentionNetwork(tf.keras.models.Model):
+
+    def __init__(
+        self,
+        d_model=128,
+        depth=6,
+        n_heads=8,
+        d_key=64,
+        d_hidden=128,
+        th_range=10,
+        n_omega=64
+    ):
+        super().__init__()
+        self.graph_encoder = LinearGraphEncoder(
+            d_model=d_model,
+            depth=depth,
+            n_heads=n_heads,
+            d_key=d_key,
+            d_hidden=d_hidden,
+            n_omega=n_omega)
+        self.decoder = PolicyDecoder(d_key, th_range)
+
+    def call(self, inputs: List[tf.Tensor]):
+        """
+
+        Args:
+            inputs (List[tf.Tensor]): [graph(B, N, F0), indice(B, F2), mask(B, N)]
+        """
+        graph = inputs[0]
+        indice = inputs[1]
+        mask = inputs[2]
+
+        H = self.graph_encoder(graph)
+        policy = self.decoder([H, indice, mask])
+        return policy
 
 
 class GraphAttentionNetwork(tf.keras.models.Model):

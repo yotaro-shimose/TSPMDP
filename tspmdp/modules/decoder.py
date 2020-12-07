@@ -27,7 +27,7 @@ class PolicyDecoder(tf.keras.models.Model):
         INFINITE = 1e+9
         Q = tf.matmul(query, self.wq)
         K = tf.matmul(H, self.wk)
-        scale = tf.sqrt(tf.constant(K.shape[-1], dtype=tf.float32))
+        scale = tf.sqrt(float(self.d_key))
         # B, N, N
         QK = tf.matmul(Q, K, transpose_b=True) / scale
         # mask is tensor of shape (B, N) by default.
@@ -87,7 +87,7 @@ class WouterDecoder(tf.keras.models.Model):
         INFINITE = 1e+9
         Q = tf.matmul(query, self.wq)
         K = tf.matmul(H, self.wk)
-        scale = tf.sqrt(tf.constant(K.shape[-1], dtype=tf.float32))
+        scale = tf.sqrt(float(self.d_key))
         # B, N, N
         QK = tf.matmul(Q, K, transpose_b=True) / scale
         # B, 1, N
