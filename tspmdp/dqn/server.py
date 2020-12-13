@@ -25,7 +25,8 @@ class Server(Process):
         self.lock = Lock()
 
     def run(self) -> None:
-        self.buffer = CPPRB(**self.cpprb_args)
+        self.buffer = CPPRB(
+            self.cpprb_args["size"], env_dict=self.cpprb_args["env_dict"])
         while True:
             cmd, *args = self.queue.get()
             if cmd == "add":
@@ -46,13 +47,13 @@ class Server(Process):
     def _upload(self, parameter: Any) -> None:
         self.parameter = parameter
 
-    def _add(self, data: Sequence[Dict[np.ndarray]]) -> None:
+    def _add(self, data: Sequence[Dict[str, np.ndarray]]) -> None:
         for d in data:
             self.buffer.add(**d)
             if d[self.done_string]:
-                self.buffer.on_step_end()
+                self.buffer.on_episode_end()
 
-    def _sample(self, size: int) -> Dict[np.ndarray]:
+    def _sample(self, size: int) -> Dict[str, np.ndarray]:
         if self.buffer.get_stored_size() < self.min_storage:
             print(
                 f"stored sample {self.buffer.get_stored_size()} is smaller than mininum storage\
@@ -73,11 +74,11 @@ class Server(Process):
         cmd = "upload"
         self.queue.put((cmd, parameter))
 
-    def add(self, data: Sequence[Dict[np.ndarray]]):
+    def add(self, data: Sequence[Dict[str, np.ndarray]]):
         cmd = "add"
         self.queue.put((cmd, data))
 
-    def sample(self, size: int) -> Dict[np.ndarray]:
+    def sample(self, size: int) -> Dict[str, np.ndarray]:
         cmd = "sample"
         self.lock.acquire()
         self.queue.put((cmd, size))

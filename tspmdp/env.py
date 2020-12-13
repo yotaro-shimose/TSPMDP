@@ -4,7 +4,6 @@ Once instances are created, all of the process(step, reset) must be compiled by 
 integer programming.
 """
 import tensorflow as tf
-import tree
 
 
 class TSPMDP(tf.Module):
@@ -130,7 +129,7 @@ class TSPMDP(tf.Module):
     def _get_status(self):
         # B, 2
         status = tf.stack([self.currents, self.depos], axis=-1)
-        return status
+        return tf.identity(status)
 
     def _get_mask(self):
         # B, N

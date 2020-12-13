@@ -10,6 +10,8 @@ MHA_TYPES = {
     "none": None
 }
 
+INFINITY = 1e+9
+
 
 @tf.keras.utils.register_keras_serializable()
 class CustomizableQDecoder(tf.keras.models.Model):
@@ -17,7 +19,6 @@ class CustomizableQDecoder(tf.keras.models.Model):
         self,
         n_heads: int,
         d_key: int,
-        th_range: float,
         n_omega: int = 64,
         mha: str = "softmax",
         use_graph_context: bool = True,
@@ -32,7 +33,6 @@ class CustomizableQDecoder(tf.keras.models.Model):
         # save init arguments
         self.init_args = get_args(offset=1)
         self.d_key = d_key
-        self.th_range = th_range
         self.source_generator = SourceGenerator(
             use_graph_context=use_graph_context)
         MHAClass = MHA_TYPES[mha]
@@ -102,7 +102,7 @@ class CustomizableQDecoder(tf.keras.models.Model):
         QK = tf.matmul(Q, K, transpose_b=True) / scale
         # B, 1, N
         mask = tf.cast(mask, tf.float32)
-        mask = (1 - mask) * 0
+        mask = (1 - mask) * (-INFINITY)
         q_value = QK * mask
         # now q_value is tensor of shape(B, 1, N) which must be turned into tensor of
         # shape(B, N)
@@ -198,7 +198,6 @@ class CustomizablePolicyDecoder(tf.keras.models.Model):
         Returns:
             [type]: [description]
         """
-        INFINITE = 1e+9
         Q = tf.matmul(query, self.wq)
         K = tf.matmul(H, self.wk)
         scale = tf.sqrt(float(self.d_key))
@@ -206,7 +205,7 @@ class CustomizablePolicyDecoder(tf.keras.models.Model):
         QK = tf.matmul(Q, K, transpose_b=True) / scale
         # B, 1, N
         mask = tf.cast(mask, tf.float32)
-        mask = (1 - mask) * (-INFINITE)
+        mask = (1 - mask) * (-INFINITY)
         policy = tf.keras.activations.softmax(
             self.th_range * tf.keras.activations.tanh(QK) + mask)
         # now policy is tensor of shape(B, 1, N) which must be turned into tensor of
