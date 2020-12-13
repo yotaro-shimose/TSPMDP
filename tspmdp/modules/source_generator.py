@@ -1,12 +1,15 @@
-import tensorflow as tf
 from typing import List
 
+import tensorflow as tf
 
+
+@tf.keras.utils.register_keras_serializable()
 class SourceGenerator(tf.keras.layers.Layer):
 
-    def __init__(self):
+    def __init__(self, use_graph_context=True):
         super().__init__()
         self.flatten = tf.keras.layers.Flatten()
+        self.use_graph_context = use_graph_context
 
     def build(self, input_shape):
         _, _, D = input_shape[0]
@@ -26,42 +29,55 @@ class SourceGenerator(tf.keras.layers.Layer):
 
         # B, N, D
         H = inputs[0]
-        # B, F1
+        # B, F
         indice = inputs[1]
 
-        # B, F1, D
+        # B, F, D
         indice_embedding = self._indice_embedding(H, indice)
 
-        # B, 1, D
-        graph_embedding = tf.reduce_mean(H, axis=-2, keepdims=True)
+        if self.use_graph_context:
+            # B, 1, D
+            graph_embedding = tf.reduce_mean(H, axis=-2, keepdims=True)
 
-        # B, (D * (F1 + 1))
-        embedding = self.flatten(
-            tf.concat([indice_embedding, graph_embedding], axis=-2))
+            # B, (D * (F + 1))
+            embedding = self.flatten(
+                tf.concat([indice_embedding, graph_embedding], axis=-2))
+        else:
+            embedding = self.flatten(indice_embedding)
         embedding = self.final_dense(embedding)
+
         return tf.expand_dims(embedding, -2)
 
     def _indice_embedding(self, H, indice):
         indice = tf.cast(indice, tf.int32)
         # calculate indice embeddings
 
-        # B, F1, N
+        # B, F, N
         indice = tf.one_hot(indice, depth=H.shape[1])
-        # B, F1, N, 1
+        # B, F, N, 1
         indice = tf.expand_dims(indice, -1)
-        # B, F1, N, D
+        # B, F, N, D
         indice = tf.tile(indice, [1, 1, 1, H.shape[-1]])
 
         # B, 1, N, D
         H = tf.expand_dims(H, 1)
-        # B, F1, N, D
+        # B, F, N, D
         H = tf.tile(H, [1, indice.shape[1], 1, 1])
 
-        # B, F1, D
+        # B, F, D
         indice_embeddings = tf.reduce_max(indice * H, -2)
         return indice_embeddings
 
+    def get_config(self) -> dict:
+        base = super().get_config()
+        specific = {
+            "use_graph_context": self.use_graph_context
+        }
+        base.update(specific)
+        return base
 
+
+@tf.keras.utils.register_keras_serializable()
 class WouterSourceGenerator(tf.keras.layers.Layer):
     def __init__(self):
         super().__init__()
@@ -85,38 +101,39 @@ class WouterSourceGenerator(tf.keras.layers.Layer):
 
         # B, N, D
         H = inputs[0]
-        # B, F1
+        # B, F
         indice = inputs[1]
 
-        # B, F1, D
+        # B, F, D
         indice_embedding = self._indice_embedding(H, indice)
 
         # B, 1, D
         graph_embedding = tf.reduce_mean(H, axis=-2, keepdims=True)
 
-        # B, (D * (F1))
+        # B, (D * (F + 1))
         embedding = self.flatten(
             tf.concat([indice_embedding, graph_embedding], axis=-2))
         # B, D
         embedding = self.final_dense(embedding)
+        # B, 1, D
         return tf.expand_dims(embedding, -2)
 
     def _indice_embedding(self, H, indice):
         indice = tf.cast(indice, tf.int32)
         # calculate indice embeddings
 
-        # B, F1, N
+        # B, F, N
         indice = tf.one_hot(indice, depth=H.shape[1])
-        # B, F1, N, 1
+        # B, F, N, 1
         indice = tf.expand_dims(indice, -1)
-        # B, F1, N, D
+        # B, F, N, D
         indice = tf.tile(indice, [1, 1, 1, H.shape[-1]])
 
         # B, 1, N, D
         H = tf.expand_dims(H, 1)
-        # B, F1, N, D
+        # B, F, N, D
         H = tf.tile(H, [1, indice.shape[1], 1, 1])
 
-        # B, F1, D
+        # B, F, D
         indice_embeddings = tf.reduce_max(indice * H, -2)
         return indice_embeddings
