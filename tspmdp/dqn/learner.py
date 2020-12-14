@@ -73,6 +73,7 @@ class Learner:
         else:
             time.sleep(1)
 
+    @tf.function
     def _train_on_batch(
         self,
         graph,

@@ -1,9 +1,10 @@
 import datetime
 import pathlib
-
+import multiprocessing
 from tspmdp.dqn.dqn import TSPDQN
 
 if __name__ == '__main__':
+    multiprocessing.set_start_method("spawn")
     n_parallels = 128
     n_nodes = 100
     n_episodes = 100000
@@ -26,7 +27,7 @@ if __name__ == '__main__':
     data_push_freq: int = 1
     download_weights_freq: int = 10
     n_learner_epochs: int = 1000000
-    learner_batch_size: int = 512
+    learner_batch_size: int = 128
     learning_rate: float = 1e-3
     upload_freq: int = 100
     sync_freq: int = 50
