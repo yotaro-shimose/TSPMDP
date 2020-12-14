@@ -76,8 +76,8 @@ class Actor:
             if self.logger:
                 self.logger.log(metrics, episode)
             self._on_episode_end()
-    # @tf.function
 
+    @tf.function
     def _act(self, decoder_input: List[tf.Tensor]):
         action = self._get_action(decoder_input)
         next_state, reward, done = self.env.step(action)

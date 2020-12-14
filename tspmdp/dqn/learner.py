@@ -87,6 +87,10 @@ class Learner:
     ):
         # n_nodes
         N = mask.shape[-1]
+        action = tf.squeeze(action)
+        reward = tf.squeeze(reward)
+        done = tf.squeeze(done)
+
         # Compute Q Target
         # B, N
         next_Q_list = self._inference(graph, next_status, next_mask)

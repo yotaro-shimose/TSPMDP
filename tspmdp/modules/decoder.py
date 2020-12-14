@@ -80,7 +80,7 @@ class CustomizableQDecoder(tf.keras.models.Model):
         if self.mha:
             query = self.mha(query, H, H, mask)
 
-        # B, 1, D
+        # B, N
         q_value = self._calc_Q(query, H, mask)
         return q_value
 
@@ -90,7 +90,7 @@ class CustomizableQDecoder(tf.keras.models.Model):
         Args:
             query (tf.Tensor): B, 1, D
             H (tf.Tensor): B, N, D
-            mask (tf.Tensor): B, 1, D
+            mask (tf.Tensor): B, 1, N
 
         Returns:
             [type]: [description]
@@ -103,7 +103,7 @@ class CustomizableQDecoder(tf.keras.models.Model):
         # B, 1, N
         mask = tf.cast(mask, tf.float32)
         mask = (1 - mask) * (-INFINITY)
-        q_value = QK * mask
+        q_value = QK + mask
         # now q_value is tensor of shape(B, 1, N) which must be turned into tensor of
         # shape(B, N)
         return tf.squeeze(q_value, axis=1)
