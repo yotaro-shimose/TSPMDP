@@ -8,6 +8,15 @@ from tspmdp.logger import TFLogger
 INFINITY = 1e+9
 
 
+def scale(x: tf.Tensor, eps: float = 1e-3) -> tf.Tensor:
+    return tf.sign(x) * (tf.sqrt(abs(x) + 1) - 1) + eps * x
+
+
+def rescale(x: tf.Tensor, eps: float = 1e-3) -> tf.Tensor:
+    z = tf.sqrt(1 + 4 * eps * (eps + 1 + abs(x))) / 2 / eps - 1 / 2 / eps
+    return tf.sign(x) * (tf.square(z) - 1)
+
+
 class Learner:
 
     def __init__(
@@ -21,7 +30,8 @@ class Learner:
         n_step=3,
         gamma=0.9999,
         upload_freq: int = 100,
-        sync_freq: int = 50
+        sync_freq: int = 50,
+        scale_value_function=True
     ):
         self.server = server
         self.network_builder = network_builder
@@ -39,6 +49,7 @@ class Learner:
         self.gamma = gamma
         self.sync_freq = sync_freq
         self.upload_freq = upload_freq
+        self.scale_value_function = scale_value_function
 
     def start(self):
         self._initialize()
@@ -102,8 +113,12 @@ class Learner:
         # B
         next_Q = tf.reduce_sum(self._inference_target(
             graph, next_status, next_mask) * one_hot_next_action, axis=-1)
+        if self.scale_value_function:
+            next_Q = rescale(next_Q)
         target = reward + self.gamma ** self.n_step * next_Q * \
             (1. - tf.cast(done, tf.float32))
+        if self.scale_value_function:
+            target = scale(target)
 
         with tf.GradientTape() as tape:
             # Calculate TDError
@@ -112,6 +127,8 @@ class Learner:
             # B, N
             one_hot_action = tf.one_hot(action, depth=N)
             current_Q = tf.reduce_sum(Q_list * one_hot_action, axis=-1)
+            if self.scale_value_function:
+                current_Q = scale(current_Q)
             loss = tf.reduce_mean(self._loss_function(current_Q, target))
 
             gradient = tape.gradient(loss, self._trainable_variables())

@@ -82,6 +82,7 @@ class TSPDQN:
         learning_rate: float = 1e-3,
         upload_freq: int = 100,
         sync_freq: int = 50,
+        scale_value_function: bool = True
     ):
         if logdir:
             logger_builder = LoggerBuilder(logdir)
@@ -135,7 +136,8 @@ class TSPDQN:
             n_step=n_step,
             gamma=gamma,
             upload_freq=upload_freq,
-            sync_freq=sync_freq
+            sync_freq=sync_freq,
+            scale_value_function=scale_value_function
         )
         self.learner = Process(target=self.learner.start)
 

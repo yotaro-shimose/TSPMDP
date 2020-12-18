@@ -25,7 +25,7 @@ class Actor:
         n_episodes: int = 10000,
         batch_size: int = 128,
         eps_start: float = 1.0,
-        eps_end: float = 0.01,
+        eps_end: float = 0.001,
         annealing_step: int = 100000,
         data_push_freq: int = 5,
         download_weights_freq: int = 10,
@@ -77,7 +77,7 @@ class Actor:
                 self.logger.log(metrics, episode)
             self._on_episode_end()
 
-    @tf.function
+    # @tf.function
     def _act(self, decoder_input: List[tf.Tensor]):
         action = self._get_action(decoder_input)
         next_state, reward, done = self.env.step(action)
@@ -117,7 +117,10 @@ class Actor:
             episode_reward += reward
             _, status, mask = next_state
             self._on_step_end()
-        metrics = {"episode_reward": tf.reduce_mean(episode_reward)}
+        metrics = {
+            "episode_reward": tf.reduce_mean(episode_reward),
+            "eps": self.eps
+        }
         return metrics
 
     def _memorize(self, **kwargs):
