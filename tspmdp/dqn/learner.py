@@ -2,7 +2,7 @@ from typing import Callable
 
 import tensorflow as tf
 import time
-from tspmdp.dqn.server import Server
+from tspmdp.dqn.server import Server, ReplayBuffer
 from tspmdp.logger import TFLogger
 
 INFINITY = 1e+9
@@ -15,6 +15,10 @@ def scale(x: tf.Tensor, eps: float = 1e-3) -> tf.Tensor:
 def rescale(x: tf.Tensor, eps: float = 1e-3) -> tf.Tensor:
     z = tf.sqrt(1 + 4 * eps * (eps + 1 + abs(x))) / 2 / eps - 1 / 2 / eps
     return tf.sign(x) * (tf.square(z) - 1)
+
+
+def concat(x: tf.Tensor, y: tf.Tensor):
+    return tf.concat([x, y], axis=0)
 
 
 class Learner:
@@ -31,7 +35,10 @@ class Learner:
         gamma=0.9999,
         upload_freq: int = 100,
         sync_freq: int = 50,
-        scale_value_function=True
+        scale_value_function: bool = True,
+        expert_ratio: float = 0.,
+        replay_buffer_builder: Callable = None,
+        data_generator: Callable = None
     ):
         self.server = server
         self.network_builder = network_builder
@@ -50,6 +57,9 @@ class Learner:
         self.sync_freq = sync_freq
         self.upload_freq = upload_freq
         self.scale_value_function = scale_value_function
+        self.expert_ratio = expert_ratio
+        self.data_generator = data_generator
+        self.replay_buffer_builder: ReplayBuffer = replay_buffer_builder
 
     def start(self):
         self._initialize()
@@ -71,16 +81,30 @@ class Learner:
             self.logger = self.logger_builder()
         # Loss function
         self._loss_function = tf.keras.losses.Huber()
+        # Expert Buffer
+        if self.expert_ratio > 0:
+            assert 0 < self.expert_ratio < 1
+            assert self.data_generator is not None
+            self.expert_buffer = self.replay_buffer_builder()
+            data = self.data_generator()
+            self.expert_buffer.add(data)
 
     def _train(self):
-        batch = self.server.sample(self.batch_size)
+        expert_batch_size = int(self.batch_size * self.expert_ratio)
+        batch_size = self.batch_size - expert_batch_size
+        batch = self.server.sample(batch_size)
         if batch:
             args = self._create_args(batch)
+            if self.expert_ratio > 0:
+                expert_batch = self.expert_buffer.sample(expert_batch_size)
+                assert expert_batch is not None
+                expert_args = self._create_args(expert_batch)
+                args = tf.nest.map_structure(concat, args, expert_args)
+
             raw_metrics = self._train_on_batch(**args)
             metrics = self._create_metrics(raw_metrics)
             self._on_train_end()
             return metrics
-
         else:
             time.sleep(1)
 

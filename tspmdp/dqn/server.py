@@ -21,12 +21,12 @@ class Server(Process):
             "Nstep": n_step_dict
         }
 
-        # サーバーロックオブジェクト
+        # Server lock object
         self.lock = Lock()
 
     def run(self) -> None:
         self.buffer = CPPRB(
-            self.cpprb_args["size"], env_dict=self.cpprb_args["env_dict"])
+            **self.cpprb_args)
         while True:
             cmd, *args = self.queue.get()
             if cmd == "add":
@@ -85,3 +85,31 @@ class Server(Process):
         sample = self.client_pipe.recv()
         self.lock.release()
         return sample
+
+
+class ReplayBuffer:
+    def __init__(self, size, env_dict, n_step_dict=None, min_storage=100, done_string="done"):
+        super().__init__()
+        self.done_string = done_string
+        self.min_storage = min_storage
+        cpprb_args = {
+            "size": size,
+            "env_dict": env_dict,
+            "Nstep": n_step_dict
+        }
+        self.buffer = CPPRB(**cpprb_args)
+
+    def add(self, data: Sequence[Dict[str, np.ndarray]]) -> None:
+        for d in data:
+            self.buffer.add(**d)
+            if d[self.done_string]:
+                self.buffer.on_episode_end()
+
+    def sample(self, size: int) -> Dict[str, np.ndarray]:
+        if self.buffer.get_stored_size() < self.min_storage:
+            print(
+                f"stored sample {self.buffer.get_stored_size()} is smaller than mininum storage\
+                     size {self.min_storage}. Returning None.")
+            return None
+        else:
+            return self.buffer.sample(size)

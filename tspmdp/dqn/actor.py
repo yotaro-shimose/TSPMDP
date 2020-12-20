@@ -7,7 +7,7 @@ import tree
 from tspmdp.dqn.server import Server
 from tspmdp.env import TSPMDP
 from tspmdp.logger import TFLogger
-
+import time
 INFINITY = 1e+9
 
 
@@ -29,6 +29,7 @@ class Actor:
         annealing_step: int = 100000,
         data_push_freq: int = 5,
         download_weights_freq: int = 10,
+        evaluation_freq: int = 100,
     ):
         # This method cannot be executed in other process
         # Note that server cannot be inherited after starting
@@ -47,6 +48,7 @@ class Actor:
         self.annealing_step = annealing_step
         self.data_push_freq = data_push_freq
         self.download_weights_freq = download_weights_freq
+        self.evaluation_freq = evaluation_freq
 
     def _initialize(self):
         # Step count
@@ -72,18 +74,18 @@ class Actor:
         self._initialize()
         for episode in range(self.n_episodes):
             self.episode = episode
-            metrics = self._episode()
+            metrics = self._episode(training=True)
             if self.logger:
                 self.logger.log(metrics, episode)
             self._on_episode_end()
 
     # @tf.function
-    def _act(self, decoder_input: List[tf.Tensor]):
-        action = self._get_action(decoder_input)
+    def _act(self, decoder_input: List[tf.Tensor], training: bool = True):
+        action = self._get_action(decoder_input, training)
         next_state, reward, done = self.env.step(action)
         return action, reward, next_state, done
 
-    def _get_action(self, state):
+    def _get_action(self, state, training: bool = True):
         q_values = self.decoder(state)
         # Apply mask
         mask = tf.cast(state[2], tf.float32)
@@ -93,34 +95,45 @@ class Actor:
         random_action = self._randint(state[2])
         random_flag = tf.cast(tf.random.uniform(
             shape=greedy_action.shape) < self.eps, tf.int32)
-        return random_flag * random_action + (1 - random_flag) * greedy_action
+        if training:
+            return random_flag * random_action + (1 - random_flag) * greedy_action
+        else:
+            return greedy_action
 
-    def _episode(self):
+    def _episode(self, training: bool = True):
         graph, status, mask = self.env.reset()
         graph_embedding = self.encoder(graph)
         done, episode_reward, ones = self._init_episode()
         while tf.math.logical_not(tf.reduce_all(done == ones)):
             # Avoid duplicate encoding
             decoder_input = [graph_embedding, status, mask]
-            action, reward, next_state, done = self._act(decoder_input)
+            action, reward, next_state, done = self._act(
+                decoder_input, training)
             _, next_status, next_mask = next_state
-            self._memorize(
-                graph=graph,
-                status=status,
-                mask=mask,
-                action=action,
-                reward=reward,
-                next_status=next_status,
-                next_mask=next_mask,
-                done=done
-            )
+            if training:
+                self._memorize(
+                    graph=graph,
+                    status=status,
+                    mask=mask,
+                    action=action,
+                    reward=reward,
+                    next_status=next_status,
+                    next_mask=next_mask,
+                    done=done
+                )
             episode_reward += reward
             _, status, mask = next_state
-            self._on_step_end()
-        metrics = {
-            "episode_reward": tf.reduce_mean(episode_reward),
-            "eps": self.eps
-        }
+            if training:
+                self._on_step_end()
+        if training:
+            metrics = {
+                "training: episode_reward": tf.reduce_mean(episode_reward),
+                "eps": self.eps
+            }
+        else:
+            metrics = {
+                "evaluation: episode_reward": tf.reduce_mean(episode_reward),
+            }
         return metrics
 
     def _memorize(self, **kwargs):
@@ -157,6 +170,14 @@ class Actor:
         # Download parameters
         if (self.episode + 1) % self.download_weights_freq == 0:
             self._download_weights()
+        # Execute evaluation
+        if (self.episode + 1) % self.evaluation_freq == 0:
+            metrics = self._episode(training=False)
+            if self.logger:
+                self.logger.log(metrics, self.episode)
+
+        # Wait for a second
+        time.sleep(1)
 
     def _randint(self, mask) -> tf.Tensor:
         """return random action number based on mask

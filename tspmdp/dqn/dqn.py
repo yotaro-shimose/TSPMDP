@@ -1,12 +1,14 @@
 from multiprocessing import Process
+from typing import List
 
 import numpy as np
 from tspmdp.dqn.actor import Actor
 from tspmdp.dqn.learner import Learner
-from tspmdp.dqn.server import Server
+from tspmdp.dqn.server import Server, ReplayBuffer
 from tspmdp.env import TSPMDP
 from tspmdp.logger import TFLogger
 from tspmdp.network_builder import CustomizableNetworkBuilder
+from tspmdp.expert_data_generator import load_expert_data
 
 
 def create_server_args(size, n_nodes, n_step, gamma):
@@ -52,6 +54,25 @@ class LoggerBuilder:
         return TFLogger(self.logdir)
 
 
+class ReplayBufferBuilder:
+    def __init__(self, **args):
+        self.args = args
+
+    def __call__(self):
+        return ReplayBuffer(**self.args)
+
+
+class ExpertDataLoader:
+    def __init__(self, data_path_list: List[str]):
+        self.data_path_list = data_path_list
+
+    def __call__(self):
+        data = []
+        for path in self.data_path_list:
+            data += load_expert_data(path)
+        return data
+
+
 class TSPDQN:
     def __init__(
         self,
@@ -77,12 +98,15 @@ class TSPDQN:
         annealing_step: int = 100000,
         data_push_freq: int = 5,
         download_weights_freq: int = 10,
+        evaluation_freq: int = 1000,
         n_learner_epochs: int = 1000000,
         learner_batch_size: int = 128,
         learning_rate: float = 1e-3,
         upload_freq: int = 100,
         sync_freq: int = 50,
-        scale_value_function: bool = True
+        scale_value_function: bool = True,
+        expert_ratio: float = 0,
+        data_path_list: List[str] = None,
     ):
         if logdir:
             logger_builder = LoggerBuilder(logdir)
@@ -93,6 +117,14 @@ class TSPDQN:
         args = create_server_args(
             size=buffer_size, n_nodes=n_nodes, n_step=n_step, gamma=gamma)
         self.server = Server(**args)
+
+        # Define expert data loader
+        if expert_ratio > 0:
+            replay_buffer_builder = ReplayBufferBuilder(**args)
+            data_generator = ExpertDataLoader(data_path_list)
+        else:
+            replay_buffer_builder = None
+            data_generator = None
 
         # Define network builder
         network_builder = CustomizableNetworkBuilder(
@@ -123,6 +155,7 @@ class TSPDQN:
             annealing_step=annealing_step,
             data_push_freq=data_push_freq,
             download_weights_freq=download_weights_freq,
+            evaluation_freq=evaluation_freq,
         )
         self.actor = Process(target=self.actor.start)
         # Define learner
@@ -137,7 +170,10 @@ class TSPDQN:
             gamma=gamma,
             upload_freq=upload_freq,
             sync_freq=sync_freq,
-            scale_value_function=scale_value_function
+            scale_value_function=scale_value_function,
+            expert_ratio=expert_ratio,
+            replay_buffer_builder=replay_buffer_builder,
+            data_generator=data_generator,
         )
         self.learner = Process(target=self.learner.start)
 

@@ -90,7 +90,7 @@ def create_expert_data(n_samples, n_nodes, factor=10000):
 
     data = []
     for _ in range(n_samples):
-        data += create_expert_episode(n_nodes)
+        data += create_expert_episode(n_nodes, factor)
 
     return data
 
