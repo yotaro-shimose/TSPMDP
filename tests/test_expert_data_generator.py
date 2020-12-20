@@ -1,5 +1,5 @@
 from tspmdp.dqn.server import Server
-from expert_data_generator import create_expert_data, load_expert_data, save_expert_data
+from tspmdp.expert_data_generator import create_expert_data, load_expert_data, save_expert_data
 import numpy as np
 import datetime
 import pathlib
