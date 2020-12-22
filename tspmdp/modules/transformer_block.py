@@ -98,7 +98,7 @@ class GTrXLBlock(tf.keras.layers.Layer):
         self.gate1 = GRUGate()
         self.gate2 = GRUGate()
 
-    def call(self, inputs: tf.Tensor):
+    def call(self, query: tf.Tensor, value: tf.Tensor = None, key: tf.Tensor = None, mask: tf.Tensor = None):
         """single transformer layer consisting of
             1. Layer Normalization
             2. Multi Head Self Attention
@@ -107,9 +107,15 @@ class GTrXLBlock(tf.keras.layers.Layer):
         Args:
             inputs (tf.Tensor): Graph Embedding (B, N, D)
         """
+        if value is None:
+            value = query
+            key = query
+        elif key is None:
+            key = value
+        inputs = query
         residual = tf.identity(inputs)
         inputs = self.bn_1(inputs)
-        inputs = self.mha(inputs, inputs, inputs)
+        inputs = self.mha(inputs, value, key, mask)
         inputs = self.gate1([residual, inputs])
         residual = tf.identity(inputs)
         inputs = self.bn_2(inputs)

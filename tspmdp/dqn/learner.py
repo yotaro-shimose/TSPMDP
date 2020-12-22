@@ -8,11 +8,11 @@ from tspmdp.logger import TFLogger
 INFINITY = 1e+9
 
 
-def scale(x: tf.Tensor, eps: float = 1e-3) -> tf.Tensor:
+def scale(x: tf.Tensor, eps: float = 1e-2) -> tf.Tensor:
     return tf.sign(x) * (tf.sqrt(abs(x) + 1) - 1) + eps * x
 
 
-def rescale(x: tf.Tensor, eps: float = 1e-3) -> tf.Tensor:
+def rescale(x: tf.Tensor, eps: float = 1e-2) -> tf.Tensor:
     z = tf.sqrt(1 + 4 * eps * (eps + 1 + abs(x))) / 2 / eps - 1 / 2 / eps
     return tf.sign(x) * (tf.square(z) - 1)
 
@@ -62,10 +62,11 @@ class Learner:
         self.replay_buffer_builder: ReplayBuffer = replay_buffer_builder
 
     def start(self):
+
         self._initialize()
         for epoch in range(self.n_epochs):
             metrics = self._train()
-            if self.logger:
+            if self.logger is not None and metrics is not None:
                 self.logger.log(metrics, epoch)
 
     def _initialize(self):
@@ -77,7 +78,7 @@ class Learner:
         # Build Optimizer
         self.optimizer = tf.keras.optimizers.Adam(self.learning_rate)
         # Build logger
-        if self.logger:
+        if self.logger_builder:
             self.logger = self.logger_builder()
         # Loss function
         self._loss_function = tf.keras.losses.Huber()
@@ -107,6 +108,7 @@ class Learner:
             return metrics
         else:
             time.sleep(1)
+            return None
 
     @tf.function
     def _train_on_batch(
@@ -129,8 +131,6 @@ class Learner:
         # Compute Q Target
         # B, N
         next_Q_list = self._inference(graph, next_status, next_mask)
-        # Apply mask
-        next_Q_list -= tf.cast(1 - mask, tf.float32) * INFINITY
         # B, N
         one_hot_next_action = tf.one_hot(
             tf.math.argmax(next_Q_list, axis=-1), depth=N)
@@ -145,7 +145,7 @@ class Learner:
             target = scale(target)
 
         with tf.GradientTape() as tape:
-            # Calculate TDError
+            # Compute TDError
             # B, N
             Q_list = self._inference(graph, status, mask)
             # B, N
@@ -153,14 +153,28 @@ class Learner:
             current_Q = tf.reduce_sum(Q_list * one_hot_action, axis=-1)
             if self.scale_value_function:
                 current_Q = scale(current_Q)
-            loss = tf.reduce_mean(self._loss_function(current_Q, target))
+            td_loss = tf.reduce_mean(self._loss_function(current_Q, target))
 
-            gradient = tape.gradient(loss, self._trainable_variables())
+            gradient = tape.gradient(td_loss, self._trainable_variables())
+            self.optimizer.apply_gradients(
+                zip(gradient, self._trainable_variables()))
+
+        # Compute TCLoss
+        with tf.GradientTape() as tape:
+            # B, N
+            updated_next_Q_list = self._inference(
+                graph, next_status, next_mask)
+            # B
+            updated_next_Q = tf.reduce_sum(
+                updated_next_Q_list * one_hot_next_action, axis=-1)
+            tc_loss = tf.reduce_mean(self._loss_function(
+                updated_next_Q, tf.reduce_max(next_Q_list, axis=-1)))
+            gradient = tape.gradient(tc_loss, self._trainable_variables())
             self.optimizer.apply_gradients(
                 zip(gradient, self._trainable_variables()))
 
         # Return Loss
-        return loss
+        return td_loss, tc_loss
 
     def _create_args(self, batch: dict):
         args = {
@@ -212,4 +226,8 @@ class Learner:
         return Q
 
     def _create_metrics(self, raw_metrics):
-        return {"loss": raw_metrics}
+        td_loss, tc_loss = raw_metrics
+        return {
+            "td_loss": td_loss,
+            "tc_loss": tc_loss
+        }

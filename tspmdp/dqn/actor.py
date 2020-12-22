@@ -1,3 +1,5 @@
+import pathlib
+import time
 from collections import defaultdict
 from typing import Callable, List
 
@@ -7,7 +9,7 @@ import tree
 from tspmdp.dqn.server import Server
 from tspmdp.env import TSPMDP
 from tspmdp.logger import TFLogger
-import time
+
 INFINITY = 1e+9
 
 
@@ -30,6 +32,8 @@ class Actor:
         data_push_freq: int = 5,
         download_weights_freq: int = 10,
         evaluation_freq: int = 100,
+        save_path: str = None,
+        load_path: str = None,
     ):
         # This method cannot be executed in other process
         # Note that server cannot be inherited after starting
@@ -49,8 +53,13 @@ class Actor:
         self.data_push_freq = data_push_freq
         self.download_weights_freq = download_weights_freq
         self.evaluation_freq = evaluation_freq
+        self.save_path = save_path
+        self.load_path = load_path
+        self.best_reward = -INFINITY
 
     def _initialize(self):
+        # Episode count
+        self.episode = 0
         # Step count
         self.step = 0
         # Build env
@@ -68,12 +77,14 @@ class Actor:
         self.local_buffer = defaultdict(list)
         # Set eps
         self.eps = self.eps_start
+        # Load network
+        if self.load_path is not None:
+            self.load(self.load_path)
 
     def start(self):
         # This method can be executed in subprocess
         self._initialize()
         for episode in range(self.n_episodes):
-            self.episode = episode
             metrics = self._episode(training=True)
             if self.logger:
                 self.logger.log(metrics, episode)
@@ -87,10 +98,11 @@ class Actor:
 
     def _get_action(self, state, training: bool = True):
         q_values = self.decoder(state)
-        # Apply mask
-        mask = tf.cast(state[2], tf.float32)
-        q_values -= (1-mask) * INFINITY
-
+        if self.logger:
+            metrics = {
+                "max_Q": tf.reduce_mean(tf.reduce_max(q_values, axis=-1))
+            }
+            self.logger.log(metrics, self.step)
         greedy_action = tf.argmax(q_values, axis=1, output_type=tf.int32)
         random_action = self._randint(state[2])
         random_flag = tf.cast(tf.random.uniform(
@@ -164,19 +176,24 @@ class Actor:
         self._anneal()
 
     def _on_episode_end(self):
+        # Count step
+        self.episode += 1
         # Flush the memory
         if (self.episode + 1) % self.data_push_freq == 0:
             self._flush()
         # Download parameters
         if (self.episode + 1) % self.download_weights_freq == 0:
             self._download_weights()
-        # Execute evaluation
+        # Execute evaluation and save the best model
         if (self.episode + 1) % self.evaluation_freq == 0:
             metrics = self._episode(training=False)
             if self.logger:
                 self.logger.log(metrics, self.episode)
+            episode_reward = metrics["evaluation: episode_reward"]
+            if episode_reward > self.best_reward and self.save_path is not None:
+                self.save(self.save_path)
 
-        # Wait for a second
+        # Wait for a second so that replay buffer won't be overwhelmed by actor's request
         time.sleep(1)
 
     def _randint(self, mask) -> tf.Tensor:
@@ -239,3 +256,17 @@ class Actor:
             encoder_weights, decoder_weights = download
             self.encoder.set_weights(encoder_weights)
             self.decoder.set_weights(decoder_weights)
+
+    def save(self, path: str):
+        encoder_path = pathlib.Path(path) / "encoder"
+        decoder_path = pathlib.Path(path) / "decoder"
+        self.encoder.save_weights(encoder_path)
+        self.decoder.save_weights(decoder_path)
+
+    def load(self, path: str):
+        if not self.encoder.built or not self.decoder.built:
+            self._build()
+        encoder_path = pathlib.Path(path) / "encoder"
+        decoder_path = pathlib.Path(path) / "decoder"
+        self.encoder.load_weights(encoder_path)
+        self.decoder.load_weights(decoder_path)

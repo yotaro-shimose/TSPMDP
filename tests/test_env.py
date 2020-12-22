@@ -68,3 +68,25 @@ def test_env_synchronization():
         original_sum += original_reward
         copy_sum += copy_reward
     assert original_sum == copy_sum
+
+
+def test_env_reward_on_episode():
+    B, N = 128, 100
+    original = TSPMDP(batch_size=B, n_nodes=N, reward_on_episode=True)
+    original.reset()
+    copy = TSPMDP(batch_size=B, n_nodes=N, reward_on_episode=False)
+    init_state = original.export_states()
+    init_state.pop("rewards")
+    copy_sum = 0
+    copy.import_states(init_state)
+    actions = tf.constant([list(range(1, N))
+                           for _ in range(B)], dtype=tf.int32)
+    original_reward = None
+    for j in range(actions.shape[1]):
+        action = actions[:, j]
+        _, original_reward, _ = original.step(action)
+        _, copy_reward, _ = copy.step(action)
+        assert tf.reduce_all(
+            original_reward == 0.) or j == actions.shape[1] - 1
+        copy_sum += copy_reward
+    tf.assert_equal(original_reward, copy_sum)

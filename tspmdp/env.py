@@ -16,6 +16,7 @@ class TSPMDP(tf.Module):
             self,
             batch_size: int = 14,
             n_nodes: int = 20,
+            reward_on_episode: bool = False
     ):
 
         # 1 for depo
@@ -35,7 +36,6 @@ class TSPMDP(tf.Module):
         self.currents = tf.Variable(tf.zeros((batch_size,), dtype=tf.int32))
         # B
         self.depos = tf.Variable(-tf.ones((batch_size,), dtype=tf.int32))
-        # B
         self.state_dict = {
             'coordinates': self.coordinates,
             'last_masks': self.last_masks,
@@ -43,10 +43,16 @@ class TSPMDP(tf.Module):
             'currents': self.currents,
             'depos': self.depos
         }
+        if reward_on_episode:
+            # B
+            self.rewards = tf.Variable(
+                tf.zeros((batch_size,), dtype=tf.float32))
+            self.state_dict.update({'rewards': self.rewards})
 
         # Scalars
         self.batch_size = batch_size
         self.n_nodes = n_nodes
+        self.reward_on_episode = reward_on_episode
 
     def step(self, actions: tf.Tensor):
         """step function
@@ -90,6 +96,14 @@ class TSPMDP(tf.Module):
         rewards = (-1) * (cost + tf.cast(is_terminals,
                                          tf.float32) * closing_cost)
 
+        if self.reward_on_episode:
+            # B Update Rewards to 0 if not terminal else total rewards.
+            self.rewards.assign_add(rewards)
+            if tf.reduce_all(tf.cast(is_terminals, tf.bool)):
+                rewards = tf.identity(self.rewards)
+            else:
+                rewards = tf.zeros((self.batch_size,), tf.float32)
+
         # [(B, N, 2), B, B]
         states = _, _, masks = self.get_states()
         self.last_masks.assign(masks)
@@ -108,6 +122,10 @@ class TSPMDP(tf.Module):
         )
         # B
         self.currents.assign(tf.identity(self.depos))
+
+        if self.reward_on_episode:
+            # B
+            self.rewards.assign(tf.zeros((self.batch_size,), dtype=tf.float32))
 
         # [(B, N, 2), (B, 2), (B, N)]
         states = _, _, masks = self.get_states()

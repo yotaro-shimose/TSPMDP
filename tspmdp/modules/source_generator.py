@@ -10,6 +10,7 @@ class SourceGenerator(tf.keras.layers.Layer):
         super().__init__()
         self.flatten = tf.keras.layers.Flatten()
         self.use_graph_context = use_graph_context
+        self.ln = tf.keras.layers.LayerNormalization()
 
     def build(self, input_shape):
         _, _, D = input_shape[0]
@@ -45,6 +46,7 @@ class SourceGenerator(tf.keras.layers.Layer):
         else:
             embedding = self.flatten(indice_embedding)
         embedding = self.final_dense(embedding)
+        embedding = self.ln(embedding)
 
         return tf.expand_dims(embedding, -2)
 

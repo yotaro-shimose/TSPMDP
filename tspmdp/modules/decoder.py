@@ -2,12 +2,14 @@ import tensorflow as tf
 from typing import List
 from tspmdp.modules.source_generator import SourceGenerator, WouterSourceGenerator
 from tspmdp.modules.functions import cut_off, get_args
+from tspmdp.modules.transformer_block import GTrXLBlock
 
 
 MHA_TYPES = {
     "softmax": tf.keras.layers.MultiHeadAttention,
     # "linear": LinearAttention,
-    "none": None
+    "none": None,
+    "gate": GTrXLBlock,
 }
 
 INFINITY = 1e+9
@@ -22,6 +24,8 @@ class CustomizableQDecoder(tf.keras.models.Model):
         n_omega: int = 64,
         mha: str = "softmax",
         use_graph_context: bool = True,
+        d_model=128,  # for transformer block
+        d_hidden=128,  # for transformer block
         *args,
         **kwargs
     ):
@@ -41,7 +45,9 @@ class CustomizableQDecoder(tf.keras.models.Model):
             "num_heads": n_heads,
             "key_dim": d_key,
             "d_key": d_key,
-            "n_omega": n_omega
+            "n_omega": n_omega,
+            "d_model": d_model,
+            "d_hidden": d_hidden,
         }
         mha_args = cut_off(MHAClass.__init__, mha_args)
         if mha == "none":
@@ -59,7 +65,6 @@ class CustomizableQDecoder(tf.keras.models.Model):
         self.wk = self.add_weight(name="wk", shape=(d_model, self.d_key),
                                   initializer=initializer,
                                   trainable=True)
-        super().build(input_shape)
 
     def call(self, inputs: List[tf.Tensor]):
         """

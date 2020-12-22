@@ -16,33 +16,35 @@ def create_server_args(size, n_nodes, n_step, gamma):
         "graph": {"shape": (n_nodes, 2), "dtype": np.float32},
         "status": {"shape": (2,), "dtype": np.int32},
         "mask": {"shape": (n_nodes,), "dtype": np.int32},
-        "action": {"dtype": np.int32},
+        "action": {"shape": (1,), "dtype": np.int32},
         "reward": {"dtype": np.float32},
         "next_status": {"shape": (2,), "dtype": np.int32},
         "next_mask": {"shape": (n_nodes,), "dtype": np.int32},
-        "done": {"dtype": np.int32},
+        "done": {"shape": (1,), "dtype": np.int32},
     }
-    Nstep = {"size": n_step,
-             "gamma": gamma,
-             "rew": "reward",
-             "next": ["next_status", "next_mask"]
-             }
+    # Nstep = {"size": n_step,
+    #          "gamma": gamma,
+    #          "rew": "reward",
+    #          "next": ["next_status", "next_mask", "done"]
+    #          }
     return {
         "size": size,
         "env_dict": env_dict,
-        "n_step_dict": Nstep
+        # "n_step_dict": Nstep
     }
 
 
 class EnvBuilder:
-    def __init__(self, batch_size, n_nodes):
+    def __init__(self, batch_size, n_nodes, reward_on_episode):
         self.batch_size = batch_size
         self.n_nodes = n_nodes
+        self.reward_on_episode = reward_on_episode
 
     def __call__(self):
         return TSPMDP(
             batch_size=self.batch_size,
-            n_nodes=self.n_nodes
+            n_nodes=self.n_nodes,
+            reward_on_episode=self.reward_on_episode
         )
 
 
@@ -63,8 +65,10 @@ class ReplayBufferBuilder:
 
 
 class ExpertDataLoader:
-    def __init__(self, data_path_list: List[str]):
+    def __init__(self, data_path_list: List[str], reward_on_episode=False):
         self.data_path_list = data_path_list
+        if reward_on_episode:
+            raise NotImplementedError
 
     def __call__(self):
         data = []
@@ -99,6 +103,9 @@ class TSPDQN:
         data_push_freq: int = 5,
         download_weights_freq: int = 10,
         evaluation_freq: int = 1000,
+        reward_on_episode: bool = True,
+        save_path: str = None,
+        load_path: str = None,
         n_learner_epochs: int = 1000000,
         learner_batch_size: int = 128,
         learning_rate: float = 1e-3,
@@ -121,7 +128,8 @@ class TSPDQN:
         # Define expert data loader
         if expert_ratio > 0:
             replay_buffer_builder = ReplayBufferBuilder(**args)
-            data_generator = ExpertDataLoader(data_path_list)
+            data_generator = ExpertDataLoader(
+                data_path_list, reward_on_episode=reward_on_episode)
         else:
             replay_buffer_builder = None
             data_generator = None
@@ -141,7 +149,8 @@ class TSPDQN:
         )
 
         # Define env_builder
-        env_builder = EnvBuilder(batch_size=n_parallels, n_nodes=n_nodes)
+        env_builder = EnvBuilder(
+            batch_size=n_parallels, n_nodes=n_nodes, reward_on_episode=reward_on_episode)
         # Define actor
         self.actor = Actor(
             server=self.server,
@@ -156,6 +165,8 @@ class TSPDQN:
             data_push_freq=data_push_freq,
             download_weights_freq=download_weights_freq,
             evaluation_freq=evaluation_freq,
+            save_path=save_path,
+            load_path=load_path
         )
         self.actor = Process(target=self.actor.start)
         # Define learner

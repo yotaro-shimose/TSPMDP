@@ -6,7 +6,7 @@ class TFLogger:
     def __init__(self, logdir):
         self.writer = tf.summary.create_file_writer(logdir=logdir)
 
-    def log(self, metrics, step):
+    def log(self, metrics: dict, step: int):
         with self.writer.as_default():
             for key, value in metrics.items():
                 tf.summary.scalar(key, value, step)

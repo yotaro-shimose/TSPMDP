@@ -44,7 +44,9 @@ class CustomizableNetworkBuilder:
             d_key=self.d_key,
             n_omega=self.n_omega,
             mha=self.decoder_mha,
-            use_graph_context=self.use_graph_context
+            use_graph_context=self.use_graph_context,
+            d_model=self.d_model,
+            d_hidden=self.d_hidden,
         )
 
         return encoder, decoder
