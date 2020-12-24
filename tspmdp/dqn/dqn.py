@@ -9,6 +9,10 @@ from tspmdp.env import TSPMDP
 from tspmdp.logger import TFLogger
 from tspmdp.network_builder import CustomizableNetworkBuilder
 from tspmdp.expert_data_generator import load_expert_data
+from tspmdp.modules.functions import get_args
+
+
+NON_DISPLAY_HPARAMS = ["data_path_list", "save_path", "load_path", "logdir"]
 
 
 def create_server_args(size, n_nodes, n_step, gamma):
@@ -49,11 +53,12 @@ class EnvBuilder:
 
 
 class LoggerBuilder:
-    def __init__(self, logdir):
+    def __init__(self, logdir, hparams: dict = None):
         self.logdir = logdir
+        self.hparams = hparams
 
     def __call__(self):
-        return TFLogger(self.logdir)
+        return TFLogger(self.logdir, self.hparams)
 
 
 class ReplayBufferBuilder:
@@ -115,8 +120,12 @@ class TSPDQN:
         expert_ratio: float = 0,
         data_path_list: List[str] = None,
     ):
+        hparams = get_args(offset=1)
+        for key in NON_DISPLAY_HPARAMS:
+            hparams.pop(key)
+
         if logdir:
-            logger_builder = LoggerBuilder(logdir)
+            logger_builder = LoggerBuilder(logdir, hparams)
         else:
             logger_builder = None
 

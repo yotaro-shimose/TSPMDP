@@ -5,7 +5,7 @@ from tspmdp.dqn.dqn import TSPDQN
 
 if __name__ == '__main__':
     multiprocessing.set_start_method("spawn")
-    n_nodes = 20
+    n_nodes = 100
     date = datetime.datetime.today().strftime("%Y%m%d%H%M%S/")
     logdir = str(pathlib.Path("./logs/") / "DQN" /
                  ("nodes" + str(n_nodes)) / date)
@@ -18,7 +18,7 @@ if __name__ == '__main__':
         "n_parallels": 16,
         "n_nodes": n_nodes,
         "n_episodes": 100000,
-        "n_step": 3,
+        "n_step": 1,
         "gamma": 0.99,
         "d_model": 128,
         "depth": 3,
@@ -29,10 +29,10 @@ if __name__ == '__main__':
         "transformer": "gate",
         "final_ln": True,
         "decoder_mha": "gate",
-        "use_graph_context": True,
+        "use_graph_context": False,
         "buffer_size": 100000,
         "eps_start": 0.5,
-        "eps_end": 0.1,
+        "eps_end": 0.15,
         "annealing_step": 100000,
         "data_push_freq": 5,
         "download_weights_freq": 5,
@@ -44,10 +44,10 @@ if __name__ == '__main__':
         "scale_value_function": False,
         "logdir": logdir,
         "evaluation_freq": 10,
-        "reward_on_episode": True,
+        "reward_on_episode": False,
         "save_path": save_path,
         "load_path": None,
-        "expert_ratio": 0.,
+        "expert_ratio": 0.05,
         "data_path_list": data_path_list,
     }
     dqn = TSPDQN(

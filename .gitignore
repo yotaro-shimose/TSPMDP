@@ -15,3 +15,7 @@ models/*
 
 # temp
 temp.py
+
+# expert data
+*.dat
+
