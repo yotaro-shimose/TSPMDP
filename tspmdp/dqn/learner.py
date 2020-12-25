@@ -38,7 +38,8 @@ class Learner:
         scale_value_function: bool = True,
         expert_ratio: float = 0.,
         replay_buffer_builder: Callable = None,
-        data_generator: Callable = None
+        data_generator: Callable = None,
+        rnd_builder: Callable = None,
     ):
         self.server = server
         self.network_builder = network_builder
@@ -46,6 +47,10 @@ class Learner:
         self.decoder: tf.keras.Model = None
         self.encoder_target: tf.keras.Model = None
         self.decoder_target: tf.keras.Model = None
+        self.rnd_encoder: tf.keras.Model = None
+        self.rnd_decoder: tf.keras.Model = None
+        self.rnd_encoder_target: tf.keras.Model = None
+        self.rnd_decoder_target: tf.keras.Model = None
         self.logger: TFLogger = None
         self.logger_builder = logger_builder
         self.n_epochs = n_epochs
@@ -60,6 +65,8 @@ class Learner:
         self.expert_ratio = expert_ratio
         self.data_generator = data_generator
         self.replay_buffer_builder: ReplayBuffer = replay_buffer_builder
+        self.rnd_builder = rnd_builder
+        self.rnd: tf.keras.Model = None
 
     def start(self):
 
@@ -89,6 +96,11 @@ class Learner:
             self.expert_buffer = self.replay_buffer_builder()
             data = self.data_generator()
             self.expert_buffer.add(data)
+        # Build RND
+        if self.rnd_builder:
+            self.rnd = self.rnd_builder()
+            self.rnd_encoder, self.rnd_decoder = self.network_builder()
+            self.rnd_encoder_target, self.rnd_decoder_target = self.network_builder()
 
     def _train(self):
         expert_batch_size = int(self.batch_size * self.expert_ratio)
@@ -120,7 +132,8 @@ class Learner:
         reward,
         next_status,
         next_mask,
-        done
+        done,
+        mode=None,
     ):
         # n_nodes
         N = mask.shape[-1]
@@ -130,13 +143,19 @@ class Learner:
 
         # Compute Q Target
         # B, N
-        next_Q_list = self._inference(graph, next_status, next_mask)
+        if mode:
+            next_inputs = graph, next_status, next_mask, mode
+            inputs = graph, status, mask, mode
+        else:
+            next_inputs = graph, next_status, next_mask
+            inputs = graph, status, mask
+        next_Q_list = self._inference(next_inputs)
         # B, N
         one_hot_next_action = tf.one_hot(
             tf.math.argmax(next_Q_list, axis=-1), depth=N)
         # B
         next_Q = tf.reduce_sum(self._inference_target(
-            graph, next_status, next_mask) * one_hot_next_action, axis=-1)
+            next_inputs) * one_hot_next_action, axis=-1)
         if self.scale_value_function:
             next_Q = rescale(next_Q)
         target = reward + self.gamma ** self.n_step * next_Q * \
@@ -147,7 +166,7 @@ class Learner:
         with tf.GradientTape() as tape:
             # Compute TDError
             # B, N
-            Q_list = self._inference(graph, status, mask)
+            Q_list = self._inference(inputs)
             # B, N
             one_hot_action = tf.one_hot(action, depth=N)
             current_Q = tf.reduce_sum(Q_list * one_hot_action, axis=-1)
@@ -163,7 +182,7 @@ class Learner:
         with tf.GradientTape() as tape:
             # B, N
             updated_next_Q_list = self._inference(
-                graph, next_status, next_mask)
+                next_inputs)
             # B
             updated_next_Q = tf.reduce_sum(
                 updated_next_Q_list * one_hot_next_action, axis=-1)
@@ -187,16 +206,13 @@ class Learner:
             "next_mask": tf.constant(batch["next_mask"], dtype=tf.int32),
             "done": tf.constant(batch["done"], dtype=tf.int32)
         }
+        if self.rnd:
+            args["mode"] = tf.constant(batch["mode"], dtype=tf.int32)
         return args
 
     def _synchronize(self):
         self.encoder_target.set_weights(self.encoder.get_weights())
         self.decoder_target.set_weights(self.decoder.get_weights())
-
-    @property
-    def built(self):
-        return self.encoder.built\
-            and self.decoder.built and self.encoder_target.built and self.decoder_target.built
 
     def _upload(self):
         weights = self.encoder.get_weights(), self.decoder.get_weights()
@@ -215,14 +231,22 @@ class Learner:
     def _trainable_variables(self):
         return self.encoder.trainable_variables + self.decoder.trainable_variables
 
-    def _inference(self, graph, status, mask):
+    def _inference(self, graph, status, mask, mode=None):
         graph_embedding = self.encoder(graph)
-        Q = self.decoder([graph_embedding, status, mask])
+        if mode:
+            inputs = [graph_embedding, status, mask, mode]
+        else:
+            inputs = [graph_embedding, status, mask]
+        Q = self.decoder(inputs)
         return Q
 
-    def _inference_target(self, graph, status, mask):
+    def _inference_target(self, graph, status, mask, mode=None):
         graph_embedding = self.encoder_target(graph)
-        Q = self.decoder_target([graph_embedding, status, mask])
+        if mode:
+            inputs = [graph_embedding, status, mask, mode]
+        else:
+            inputs = [graph_embedding, status, mask]
+        Q = self.decoder_target(inputs)
         return Q
 
     def _create_metrics(self, raw_metrics):

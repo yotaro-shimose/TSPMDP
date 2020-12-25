@@ -1,4 +1,5 @@
 from multiprocessing import Process
+from temp import RNDBuilder
 from typing import List
 
 import numpy as np
@@ -119,6 +120,16 @@ class TSPDQN:
         scale_value_function: bool = True,
         expert_ratio: float = 0,
         data_path_list: List[str] = None,
+        use_rnd: bool = True,
+        rnd_d_model: int = 64,
+        rnd_depth: int = 2,
+        rnd_n_heads: int = 8,
+        rnd_d_key: int = 8,
+        rnd_d_hidden: int = 64,
+        rnd_n_omega: int = 64,
+        rnd_transformer: str = "preln",
+        rnd_final_ln: bool = True,
+        rnd_use_graph_context: bool = True,
     ):
         hparams = get_args(offset=1)
         for key in NON_DISPLAY_HPARAMS:
@@ -156,6 +167,20 @@ class TSPDQN:
             decoder_mha=decoder_mha,
             use_graph_context=use_graph_context
         )
+        if use_rnd:
+            rnd_builder = RNDBuilder(
+                d_model=rnd_d_model,
+                depth=rnd_depth,
+                n_heads=rnd_n_heads,
+                d_key=rnd_d_key,
+                d_hidden=rnd_d_hidden,
+                n_omega=rnd_n_omega,
+                transformer=rnd_transformer,
+                final_ln=rnd_final_ln,
+                use_graph_context=rnd_use_graph_context
+            )
+        else:
+            rnd_builder = None
 
         # Define env_builder
         env_builder = EnvBuilder(
@@ -194,6 +219,7 @@ class TSPDQN:
             expert_ratio=expert_ratio,
             replay_buffer_builder=replay_buffer_builder,
             data_generator=data_generator,
+            rnd_builder=rnd_builder,
         )
         self.learner = Process(target=self.learner.start)
 

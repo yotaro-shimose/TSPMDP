@@ -25,3 +25,6 @@ def test_wouter_attention_network():
     tf.assert_equal(policy * (1-mask),
                     tf.zeros(policy.shape))
     assert policy.shape == (B, N)
+
+
+test_graph_attention_network()

@@ -24,6 +24,7 @@ class CustomizableQDecoder(tf.keras.models.Model):
         n_omega: int = 64,
         mha: str = "softmax",
         use_graph_context: bool = True,
+        accept_mode: bool = False,
         d_model=128,  # for transformer block
         d_hidden=128,  # for transformer block
         *args,
@@ -38,7 +39,9 @@ class CustomizableQDecoder(tf.keras.models.Model):
         self.init_args = get_args(offset=1)
         self.d_key = d_key
         self.source_generator = SourceGenerator(
-            use_graph_context=use_graph_context)
+            use_graph_context=use_graph_context,
+            accept_mode=accept_mode
+        )
         MHAClass = MHA_TYPES[mha]
         mha_args = {
             "n_heads": n_heads,
@@ -54,6 +57,7 @@ class CustomizableQDecoder(tf.keras.models.Model):
             self.mha = None
         else:
             self.mha = MHAClass(**mha_args)
+        self.accept_mode = accept_mode
 
     def build(self, input_shape):
         d_model = input_shape[0][-1]
@@ -70,14 +74,16 @@ class CustomizableQDecoder(tf.keras.models.Model):
         """
 
         Args:
-            inputs (List[tf.Tensor]): [H(B, N, D), indice(B, F), mask(B, N)]
+            inputs (List[tf.Tensor]): [H(B, N, D), indice(B, F), mask(B, N), mode(B, M) optional]
         """
         H = inputs[0]
         indice = inputs[1]
         mask = inputs[2]
-
-        # B, 1, D
-        query = self.source_generator([H, indice])
+        if self.accept_mode:
+            mode = inputs[3]
+            query = self.source_generator([H, indice, mode])
+        else:
+            query = self.source_generator([H, indice])
 
         # B, 1, N
         mask = tf.expand_dims(mask, axis=1)

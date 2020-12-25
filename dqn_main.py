@@ -3,6 +3,16 @@ import pathlib
 import multiprocessing
 from tspmdp.dqn.dqn import TSPDQN
 
+
+# TODO
+# - create RND using transformer
+# - make learner to learn separate network for extrinsic and intrinsic reward respectively using
+# gamma stored in buffer
+# - make actor to use separate network for extrinsic and intrinsic reward
+# - make actor to store exploration mode
+# - make actor to choose exploration mode using sliding UCB
+# - parametrize to switch RND
+
 if __name__ == '__main__':
     multiprocessing.set_start_method("spawn")
     n_nodes = 100
@@ -49,6 +59,16 @@ if __name__ == '__main__':
         "load_path": None,
         "expert_ratio": 0.05,
         "data_path_list": data_path_list,
+        "use_rnd": True,
+        "rnd_d_model": 64,
+        "rnd_depth": 2,
+        "rnd_n_heads": 8,
+        "rnd_d_key": 8,
+        "rnd_d_hidden": 64,
+        "rnd_n_omega": 64,
+        "rnd_transformer": "preln",
+        "rnd_final_ln": True,
+        "rnd_use_graph_context": True,
     }
     dqn = TSPDQN(
         **args
