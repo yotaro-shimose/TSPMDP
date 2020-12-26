@@ -1,8 +1,8 @@
-from typing import Callable
+import time
+from typing import Callable, List, Union
 
 import tensorflow as tf
-import time
-from tspmdp.dqn.server import Server, ReplayBuffer
+from tspmdp.dqn.server import ReplayBuffer, Server
 from tspmdp.logger import TFLogger
 
 INFINITY = 1e+9
@@ -40,6 +40,7 @@ class Learner:
         replay_buffer_builder: Callable = None,
         data_generator: Callable = None,
         rnd_builder: Callable = None,
+        beta: List[float] = None,
     ):
         self.server = server
         self.network_builder = network_builder
@@ -58,7 +59,7 @@ class Learner:
         self.optimizer: tf.keras.optimizers.Optimizer = None
         self.learning_rate = learning_rate
         self.n_step = n_step
-        self.gamma = gamma
+        self.gamma: Union[List[float], float] = gamma
         self.sync_freq = sync_freq
         self.upload_freq = upload_freq
         self.scale_value_function = scale_value_function
@@ -67,6 +68,7 @@ class Learner:
         self.replay_buffer_builder: ReplayBuffer = replay_buffer_builder
         self.rnd_builder = rnd_builder
         self.rnd: tf.keras.Model = None
+        self.beta: Union[List[float], float] = beta
 
     def start(self):
 
@@ -101,6 +103,11 @@ class Learner:
             self.rnd = self.rnd_builder()
             self.rnd_encoder, self.rnd_decoder = self.network_builder()
             self.rnd_encoder_target, self.rnd_decoder_target = self.network_builder()
+            # M
+            assert isinstance(self.beta, list)
+            assert isinstance(self.gamma, list)
+            self.beta = tf.expand_dims(tf.constant(self.beta), axis=0)
+            self.gamma = tf.expand_dims(tf.constant(self.gamma), axis=0)
 
     def _train(self):
         expert_batch_size = int(self.batch_size * self.expert_ratio)
@@ -122,6 +129,10 @@ class Learner:
             time.sleep(1)
             return None
 
+    # TODO
+    # Decoderの入力のmode変数をOne-Hotからスカラーにさしかえる。テストもやりなおし
+    # Prepare separate optimizer for each optimization
+
     @tf.function
     def _train_on_batch(
         self,
@@ -141,56 +152,110 @@ class Learner:
         reward = tf.squeeze(reward)
         done = tf.squeeze(done)
 
-        # Compute Q Target
+        # Compute next action based on Q value
         # B, N
-        if mode:
+        if mode is not None:
             next_inputs = graph, next_status, next_mask, mode
             inputs = graph, status, mask, mode
+            # B, M
+            mode = tf.one_hot(mode, depth=self.beta.shape[-1])
+            # B
+            beta = tf.reduce_sum(
+                self.beta * mode, axis=-1)
+            # B
+            gamma = tf.reduce_sum(
+                self.gamma * mode, axis=-1)
         else:
             next_inputs = graph, next_status, next_mask
             inputs = graph, status, mask
-        next_Q_list = self._inference(next_inputs)
+            gamma = self.gamma
+            beta = self.beta
+
+        # Q(s, a, j: theta_e)
+        # B, N
+        next_Q_list = self._inference(
+            *next_inputs, reward="extrinsic", target=False)
+        if mode is not None:
+            # B, N
+            next_Q_i_list = self._inference(
+                *next_inputs, reward="intrinsic", target=False)
+            next_Q_list = next_Q_list + beta * next_Q_i_list
+
         # B, N
         one_hot_next_action = tf.one_hot(
             tf.math.argmax(next_Q_list, axis=-1), depth=N)
+
+        # Compute extrinsic target
         # B
-        next_Q = tf.reduce_sum(self._inference_target(
-            next_inputs) * one_hot_next_action, axis=-1)
+        next_Q_e = tf.reduce_sum(self._inference(
+            *next_inputs, reward="extrinsic", target=True) * one_hot_next_action, axis=-1)
         if self.scale_value_function:
-            next_Q = rescale(next_Q)
-        target = reward + self.gamma ** self.n_step * next_Q * \
+            next_Q_e = rescale(next_Q_e)
+        target = reward + gamma ** self.n_step * next_Q_e * \
             (1. - tf.cast(done, tf.float32))
         if self.scale_value_function:
             target = scale(target)
 
+        # Optimize extrinsic network
         with tf.GradientTape() as tape:
             # Compute TDError
             # B, N
-            Q_list = self._inference(inputs)
+            Q_list = self._inference(*inputs, reward="extrinsic", target=False)
             # B, N
             one_hot_action = tf.one_hot(action, depth=N)
             current_Q = tf.reduce_sum(Q_list * one_hot_action, axis=-1)
-            if self.scale_value_function:
-                current_Q = scale(current_Q)
             td_loss = tf.reduce_mean(self._loss_function(current_Q, target))
 
-            gradient = tape.gradient(td_loss, self._trainable_variables())
+            gradient = tape.gradient(
+                td_loss, self.encoder.trainable_variables + self.decoder.trainable_variables)
             self.optimizer.apply_gradients(
-                zip(gradient, self._trainable_variables()))
+                zip(gradient, self.encoder.trainable_variables + self.decoder.trainable_variables))
 
-        # Compute TCLoss
+        # Compute extrinsic TCLoss
         with tf.GradientTape() as tape:
             # B, N
             updated_next_Q_list = self._inference(
-                next_inputs)
+                *next_inputs, reward="extrinsic", target=False)
             # B
             updated_next_Q = tf.reduce_sum(
                 updated_next_Q_list * one_hot_next_action, axis=-1)
             tc_loss = tf.reduce_mean(self._loss_function(
                 updated_next_Q, tf.reduce_max(next_Q_list, axis=-1)))
-            gradient = tape.gradient(tc_loss, self._trainable_variables())
-            self.optimizer.apply_gradients(
-                zip(gradient, self._trainable_variables()))
+            gradient = tape.gradient(
+                tc_loss, self.encoder.trainable_variables + self.decoder.trainable_variables)
+            self.optimizer.apply_gradients(zip(
+                gradient, self.encoder.trainable_variables + self.decoder.trainable_variables))
+
+        if mode is not None:
+            # Compute intrinsic target
+            # B
+            next_Q_i = tf.reduce_sum(self._inference(
+                *next_inputs, reward="intrinsic", target=True) * one_hot_next_action, axis=-1)
+            if self.scale_value_function:
+                next_Q_i = rescale(next_Q_i)
+            # B
+            intrinsic_reward = self.rnd([graph, status, mask])
+            target = intrinsic_reward + gamma ** self.n_step * next_Q_i * \
+                (1. - tf.cast(done, tf.float32))
+            if self.scale_value_function:
+                target = scale(target)
+
+            # Optimize intrinsic network
+            with tf.GradientTape() as tape:
+                # Compute TDError
+                # B, N
+                Q_list = self._inference(
+                    *inputs, reward="intrinsic", target=False)
+                # B, N
+                one_hot_action = tf.one_hot(action, depth=N)
+                current_Q = tf.reduce_sum(Q_list * one_hot_action, axis=-1)
+                td_loss = tf.reduce_mean(
+                    self._loss_function(current_Q, target))
+
+                gradient = tape.gradient(
+                    td_loss, self.encoder.trainable_variables + self.decoder.trainable_variables)
+                self.optimizer.apply_gradients(
+                    zip(gradient, self.encoder.trainable_variables + self.decoder.trainable_variables))
 
         # Return Loss
         return td_loss, tc_loss
@@ -228,25 +293,29 @@ class Learner:
         if self.step % self.upload_freq == 0:
             self._upload()
 
-    def _trainable_variables(self):
-        return self.encoder.trainable_variables + self.decoder.trainable_variables
-
-    def _inference(self, graph, status, mask, mode=None):
-        graph_embedding = self.encoder(graph)
+    def _inference(self, graph, status, mask, mode=None, reward="extrinsic", target=False):
+        if reward == "extrinsic":
+            if target:
+                encoder = self.encoder_target
+                decoder = self.decoder_target
+            else:
+                encoder = self.encoder
+                decoder = self.decoder
+        elif reward == "intrinsic":
+            if target:
+                encoder = self.rnd_encoder_target
+                decoder = self.rnd_decoder_target
+            else:
+                encoder = self.rnd_encoder
+                decoder = self.rnd_decoder
+        else:
+            raise ValueError("reward must be either intrinsic or extrinsic")
+        graph_embedding = encoder(graph)
         if mode:
             inputs = [graph_embedding, status, mask, mode]
         else:
             inputs = [graph_embedding, status, mask]
-        Q = self.decoder(inputs)
-        return Q
-
-    def _inference_target(self, graph, status, mask, mode=None):
-        graph_embedding = self.encoder_target(graph)
-        if mode:
-            inputs = [graph_embedding, status, mask, mode]
-        else:
-            inputs = [graph_embedding, status, mask]
-        Q = self.decoder_target(inputs)
+        Q = decoder(inputs)
         return Q
 
     def _create_metrics(self, raw_metrics):
