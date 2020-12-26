@@ -151,8 +151,6 @@ class Learner:
             # B, N
             one_hot_action = tf.one_hot(action, depth=N)
             current_Q = tf.reduce_sum(Q_list * one_hot_action, axis=-1)
-            if self.scale_value_function:
-                current_Q = scale(current_Q)
             td_loss = tf.reduce_mean(self._loss_function(current_Q, target))
 
             gradient = tape.gradient(td_loss, self._trainable_variables())
