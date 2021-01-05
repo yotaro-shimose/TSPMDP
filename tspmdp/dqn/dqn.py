@@ -1,17 +1,16 @@
 from multiprocessing import Process
-from temp import RNDBuilder
-from typing import List
+from typing import List, Union
 
 import numpy as np
 from tspmdp.dqn.actor import Actor
 from tspmdp.dqn.learner import Learner
-from tspmdp.dqn.server import Server, ReplayBuffer
+from tspmdp.dqn.server import ReplayBuffer, Server
 from tspmdp.env import TSPMDP
-from tspmdp.logger import TFLogger
-from tspmdp.network_builder import CustomizableNetworkBuilder
 from tspmdp.expert_data_generator import load_expert_data
+from tspmdp.logger import TFLogger
 from tspmdp.modules.functions import get_args
-
+from tspmdp.modules.rnd import RNDBuilder
+from tspmdp.network_builder import CustomizableNetworkBuilder
 
 NON_DISPLAY_HPARAMS = ["data_path_list", "save_path", "load_path", "logdir"]
 
@@ -90,7 +89,7 @@ class TSPDQN:
         n_nodes=100,
         n_episodes=100000,
         n_step=3,
-        gamma=0.9999,
+        gamma: Union[float, list] = 0.9999,
         d_model: int = 128,
         depth: int = 6,
         n_heads: int = 8,
@@ -130,6 +129,10 @@ class TSPDQN:
         rnd_transformer: str = "preln",
         rnd_final_ln: bool = True,
         rnd_use_graph_context: bool = True,
+        beta: List[float] = [0., 0.2, 0.4, 0.6, 0.8, 1],
+        ucb_window_size: int = 16*50,
+        ucb_eps: float = 0.5,
+        ucb_beta: float = 1,
     ):
         hparams = get_args(offset=1)
         for key in NON_DISPLAY_HPARAMS:
@@ -200,7 +203,12 @@ class TSPDQN:
             download_weights_freq=download_weights_freq,
             evaluation_freq=evaluation_freq,
             save_path=save_path,
-            load_path=load_path
+            load_path=load_path,
+            beta=beta,
+            gamma=gamma,
+            ucb_window_size=ucb_window_size,
+            ucb_eps=ucb_eps,
+            ucb_beta=ucb_beta
         )
         self.actor = Process(target=self.actor.start)
         # Define learner
@@ -220,6 +228,7 @@ class TSPDQN:
             replay_buffer_builder=replay_buffer_builder,
             data_generator=data_generator,
             rnd_builder=rnd_builder,
+            beta=beta,
         )
         self.learner = Process(target=self.learner.start)
 

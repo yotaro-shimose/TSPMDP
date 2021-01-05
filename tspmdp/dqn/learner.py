@@ -56,7 +56,10 @@ class Learner:
         self.logger_builder = logger_builder
         self.n_epochs = n_epochs
         self.batch_size = batch_size
-        self.optimizer: tf.keras.optimizers.Optimizer = None
+        self.extrinsic_td_optimizer: tf.keras.optimizers.Optimizer = None
+        self.extrinsic_tc_optimizer: tf.keras.optimizers.Optimizer = None
+        self.intrinsic_td_optimizer: tf.keras.optimizers.Optimizer = None
+        self.intrinsic_tc_optimizer: tf.keras.optimizers.Optimizer = None
         self.learning_rate = learning_rate
         self.n_step = n_step
         self.gamma: Union[List[float], float] = gamma
@@ -85,7 +88,10 @@ class Learner:
         self.encoder, self.decoder = self.network_builder()
         self.encoder_target, self.decoder_target = self.network_builder()
         # Build Optimizer
-        self.optimizer = tf.keras.optimizers.Adam(self.learning_rate)
+        self.extrinsic_td_optimizer = tf.keras.optimizers.Adam(
+            self.learning_rate)
+        self.extrinsic_tc_optimizer = tf.keras.optimizers.Adam(
+            self.learning_rate)
         # Build logger
         if self.logger_builder:
             self.logger = self.logger_builder()
@@ -108,6 +114,10 @@ class Learner:
             assert isinstance(self.gamma, list)
             self.beta = tf.expand_dims(tf.constant(self.beta), axis=0)
             self.gamma = tf.expand_dims(tf.constant(self.gamma), axis=0)
+            self.intrinsic_td_optimizer = tf.keras.optimizers.Adam(
+                self.learning_rate)
+            self.intrinsic_tc_optimizer = tf.keras.optimizers.Adam(
+                self.learning_rate)
 
     def _train(self):
         expert_batch_size = int(self.batch_size * self.expert_ratio)
@@ -121,19 +131,14 @@ class Learner:
                 expert_args = self._create_args(expert_batch)
                 args = tf.nest.map_structure(concat, args, expert_args)
 
-            raw_metrics = self._train_on_batch(**args)
-            metrics = self._create_metrics(raw_metrics)
+            metrics = self._train_on_batch(**args)
             self._on_train_end()
             return metrics
         else:
             time.sleep(1)
             return None
 
-    # TODO
-    # Decoderの入力のmode変数をOne-Hotからスカラーにさしかえる。テストもやりなおし
-    # Prepare separate optimizer for each optimization
-
-    @tf.function
+    # @tf.function
     def _train_on_batch(
         self,
         graph,
@@ -144,7 +149,7 @@ class Learner:
         next_status,
         next_mask,
         done,
-        mode=None,
+        mode=None,  # B, M one-hot vector
     ):
         # n_nodes
         N = mask.shape[-1]
@@ -157,8 +162,7 @@ class Learner:
         if mode is not None:
             next_inputs = graph, next_status, next_mask, mode
             inputs = graph, status, mask, mode
-            # B, M
-            mode = tf.one_hot(mode, depth=self.beta.shape[-1])
+
             # B
             beta = tf.reduce_sum(
                 self.beta * mode, axis=-1)
@@ -173,13 +177,16 @@ class Learner:
 
         # Q(s, a, j: theta_e)
         # B, N
-        next_Q_list = self._inference(
+        next_Q_e_list = self._inference(
             *next_inputs, reward="extrinsic", target=False)
+        next_Q_list = tf.identity(next_Q_e_list)
         if mode is not None:
             # B, N
             next_Q_i_list = self._inference(
                 *next_inputs, reward="intrinsic", target=False)
             next_Q_list = next_Q_list + beta * next_Q_i_list
+        else:
+            next_Q_i_list = None
 
         # B, N
         one_hot_next_action = tf.one_hot(
@@ -196,6 +203,9 @@ class Learner:
         if self.scale_value_function:
             target = scale(target)
 
+        trainable_variables = self.encoder.trainable_variables + \
+            self.decoder.trainable_variables
+
         # Optimize extrinsic network
         with tf.GradientTape() as tape:
             # Compute TDError
@@ -207,26 +217,34 @@ class Learner:
             td_loss = tf.reduce_mean(self._loss_function(current_Q, target))
 
             gradient = tape.gradient(
-                td_loss, self.encoder.trainable_variables + self.decoder.trainable_variables)
-            self.optimizer.apply_gradients(
-                zip(gradient, self.encoder.trainable_variables + self.decoder.trainable_variables))
+                td_loss, trainable_variables)
+            self.extrinsic_td_optimizer.apply_gradients(
+                zip(gradient, trainable_variables))
 
         # Compute extrinsic TCLoss
-        with tf.GradientTape() as tape:
-            # B, N
-            updated_next_Q_list = self._inference(
-                *next_inputs, reward="extrinsic", target=False)
-            # B
-            updated_next_Q = tf.reduce_sum(
-                updated_next_Q_list * one_hot_next_action, axis=-1)
-            tc_loss = tf.reduce_mean(self._loss_function(
-                updated_next_Q, tf.reduce_max(next_Q_list, axis=-1)))
-            gradient = tape.gradient(
-                tc_loss, self.encoder.trainable_variables + self.decoder.trainable_variables)
-            self.optimizer.apply_gradients(zip(
-                gradient, self.encoder.trainable_variables + self.decoder.trainable_variables))
+        # with tf.GradientTape() as tape:
+        #     # B, N
+        #     updated_next_Q_list = self._inference(
+        #         *next_inputs, reward="extrinsic", target=False)
+        #     # B
+        #     updated_next_Q = tf.reduce_sum(
+        #         updated_next_Q_list * one_hot_next_action, axis=-1)
+        #     next_Q = tf.reduce_sum(
+        #         next_Q_e_list * one_hot_next_action, axis=-1)
+        #     tc_loss = tf.reduce_mean(
+        #         self._loss_function(updated_next_Q, next_Q))
+        #     gradient = tape.gradient(
+        #         tc_loss, self.encoder.trainable_variables + self.decoder.trainable_variables)
+        #     self.extrinsic_tc_optimizer.apply_gradients(zip(
+        #         gradient, self.encoder.trainable_variables + self.decoder.trainable_variables))
+
+        metrics = {
+            "extrinsic td loss": td_loss,
+            # "extrinsic tc loss": tc_loss
+        }
 
         if mode is not None:
+
             # Compute intrinsic target
             # B
             next_Q_i = tf.reduce_sum(self._inference(
@@ -240,6 +258,9 @@ class Learner:
             if self.scale_value_function:
                 target = scale(target)
 
+            trainable_variables = self.rnd_encoder.trainable_variables + \
+                self.rnd_decoder.trainable_variables
+
             # Optimize intrinsic network
             with tf.GradientTape() as tape:
                 # Compute TDError
@@ -252,13 +273,33 @@ class Learner:
                 td_loss = tf.reduce_mean(
                     self._loss_function(current_Q, target))
 
-                gradient = tape.gradient(
-                    td_loss, self.encoder.trainable_variables + self.decoder.trainable_variables)
-                self.optimizer.apply_gradients(
-                    zip(gradient, self.encoder.trainable_variables + self.decoder.trainable_variables))
+                gradient = tape.gradient(td_loss, trainable_variables)
+                self.intrinsic_td_optimizer.apply_gradients(
+                    zip(gradient, trainable_variables))
 
+            # # Compute intrinsic TCLoss
+            # with tf.GradientTape() as tape:
+            #     # B, N
+            #     updated_next_Q_list = self._inference(
+            #         *next_inputs, reward="intrinsic", target=False)
+            #     # B
+            #     updated_next_Q = tf.reduce_sum(
+            #         updated_next_Q_list * one_hot_next_action, axis=-1)
+            #     next_Q = tf.reduce_sum(
+            #         next_Q_i_list * one_hot_next_action, axis=-1)
+            #     tc_loss = tf.reduce_mean(
+            #         self._loss_function(updated_next_Q, next_Q))
+            #     gradient = tape.gradient(
+            #         tc_loss, trainable_variables)
+            #     self.intrinsic_tc_optimizer.apply_gradients(zip(
+            #         gradient, trainable_variables))
+            intrinsic_metrics = {
+                "intrinsic td loss": td_loss,
+                # "intrinsic tc loss": tc_loss
+            }
+            metrics.update(intrinsic_metrics)
         # Return Loss
-        return td_loss, tc_loss
+        return metrics
 
     def _create_args(self, batch: dict):
         args = {
@@ -317,10 +358,3 @@ class Learner:
             inputs = [graph_embedding, status, mask]
         Q = decoder(inputs)
         return Q
-
-    def _create_metrics(self, raw_metrics):
-        td_loss, tc_loss = raw_metrics
-        return {
-            "td_loss": td_loss,
-            "tc_loss": tc_loss
-        }

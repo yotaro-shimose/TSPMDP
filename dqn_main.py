@@ -5,11 +5,6 @@ from tspmdp.dqn.dqn import TSPDQN
 
 
 # TODO
-# - create RND using transformer
-# - make learner to learn separate network for extrinsic and intrinsic reward respectively using
-# gamma stored in buffer
-# - make actor to use separate network for extrinsic and intrinsic reward
-# - make actor to store exploration mode
 # - make actor to choose exploration mode using sliding UCB
 # - parametrize to switch RND
 
@@ -17,11 +12,12 @@ if __name__ == '__main__':
     multiprocessing.set_start_method("spawn")
     n_nodes = 100
     date = datetime.datetime.today().strftime("%Y%m%d%H%M%S/")
-    logdir = str(pathlib.Path("./logs/") / "DQN" /
+    logdir = str(pathlib.Path("./logs/") / "DQN_EXP" /
                  ("nodes" + str(n_nodes)) / date)
     data_path_list = [
         "./expert_data/100nodes1000samples20201218142925.dat",
-        # "./expert_data/100nodes1000samples20201218141310.dat",
+        "./expert_data/100nodes1000samples20201218141310.dat",
+        "./expert_data/100nodes1000samples20201218135738.dat",
     ]
     save_path = None
     args = {
@@ -40,7 +36,7 @@ if __name__ == '__main__':
         "final_ln": True,
         "decoder_mha": "gate",
         "use_graph_context": False,
-        "buffer_size": 100000,
+        "buffer_size": 1000000,
         "eps_start": 0.5,
         "eps_end": 0.15,
         "annealing_step": 100000,
@@ -57,9 +53,9 @@ if __name__ == '__main__':
         "reward_on_episode": False,
         "save_path": save_path,
         "load_path": None,
-        "expert_ratio": 0.05,
+        "expert_ratio": 0.15,
         "data_path_list": data_path_list,
-        "use_rnd": True,
+        "use_rnd": False,
         "rnd_d_model": 64,
         "rnd_depth": 2,
         "rnd_n_heads": 8,
@@ -69,6 +65,10 @@ if __name__ == '__main__':
         "rnd_transformer": "preln",
         "rnd_final_ln": True,
         "rnd_use_graph_context": True,
+        "beta": [0., 0.2, 0.4, 0.6, 0.8, 1],
+        "ucb_window_size": 16*50,
+        "ucb_eps": 0.5,
+        "ucb_beta": 1,
     }
     dqn = TSPDQN(
         **args

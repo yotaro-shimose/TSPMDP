@@ -1,7 +1,8 @@
 import pathlib
 import time
-from collections import defaultdict
+from collections import defaultdict, deque
 from typing import Callable, List
+from copy import deepcopy
 
 import numpy as np
 import tensorflow as tf
@@ -34,14 +35,21 @@ class Actor:
         evaluation_freq: int = 100,
         save_path: str = None,
         load_path: str = None,
+        beta: List[float] = None,
+        gamma: List[float] = None,
+        ucb_window_size: int = None,
+        ucb_eps: float = None,
+        ucb_beta: float = None,
     ):
         # This method cannot be executed in other process
         # Note that server cannot be inherited after starting
         self.server = server
         self.env: TSPMDP = None
         self.env_builder = env_builder
-        self.encoder: tf.keras.models.Model = None
-        self.decoder: tf.keras.models.Model = None
+        self.encoder: tf.keras.Model = None
+        self.decoder: tf.keras.Model = None
+        self.rnd_encoder: tf.keras.Model = None
+        self.rnd_decoder: tf.keras.Model = None
         self.network_builder = network_builder
         self.logger: TFLogger = None
         self.logger_builder = logger_builder
@@ -56,6 +64,19 @@ class Actor:
         self.save_path = save_path
         self.load_path = load_path
         self.best_reward = -INFINITY
+        self.beta = beta
+        self.gamma = gamma
+        self.use_rnd = beta is not None
+        self.ucb_beta = ucb_beta
+        self.ucb_eps = ucb_eps
+        self.ucb: SlidingWindowUCB = None
+        self.ucb_window_size = ucb_window_size
+        if self.use_rnd:
+            assert isinstance(beta, list)
+            assert isinstance(gamma, list)
+            assert isinstance(ucb_window_size, int)
+            assert isinstance(ucb_eps, float)
+            assert isinstance(ucb_beta, float)
 
     def _initialize(self):
         # Episode count
@@ -66,6 +87,18 @@ class Actor:
         self.env = self.env_builder()
         # Build network instance
         self.encoder, self.decoder = self.network_builder()
+        # Build intrinsic network instance
+        if self.use_rnd:
+            assert isinstance(self.beta, list)
+            assert isinstance(self.gamma, list)
+            self.beta = tf.constant(self.beta, dtype=tf.float32)
+            self.gamma = tf.constant(self.gamma, dtype=tf.float32)
+            self.rnd_encoder, self.rnd_decoder = self.network_builder()
+            # Build ucb
+            self.ucb = SlidingWindowUCB(
+                self.beta.shape[0], self.ucb_window_size, self.ucb_beta, self.ucb_eps)
+            self.ucb.reset()
+
         # Build network weights
         self._build()
         # Build logger
@@ -90,20 +123,48 @@ class Actor:
                 self.logger.log(metrics, episode)
             self._on_episode_end()
 
-    # @tf.function
-    def _act(self, decoder_input: List[tf.Tensor], training: bool = True):
-        action = self._get_action(decoder_input, training)
+    def _act(
+        self,
+        decoder_input: List[tf.Tensor],
+        training: bool = True,
+        rnd_decoder_input: List[tf.Tensor] = None,
+    ):
+        action = self._get_action(
+            decoder_input, training, rnd_decoder_input)
         next_state, reward, done = self.env.step(action)
         return action, reward, next_state, done
 
-    def _get_action(self, state, training: bool = True):
-        q_values = self.decoder(state)
+    def _get_action(
+        self,
+        state: List[tf.Tensor],
+        training: bool = True,
+        rnd_state: List[tf.Tensor] = None,
+    ):
+        # Compute extrinsic Q values
+        Q_list = self.decoder(state)
+        # Compute intrinsic Q values when using rnd
+        if self.use_rnd:
+            Q_i_list = self.rnd_decoder(rnd_state)
+            # beta should be zero during evaluation phase
+            beta = self.beta * self.ucb.mode if training else 0
+        else:
+            Q_i_list = tf.zeros(Q_list.shape, dtype=tf.float32)
+            beta = 0
+        # Log metrics
         if self.logger:
             metrics = {
-                "max_Q": tf.reduce_mean(tf.reduce_max(q_values, axis=-1))
+                "max_Q": tf.reduce_mean(tf.reduce_max(Q_list, axis=-1)),
             }
+            if self.use_rnd:
+                metrics.update({
+                    "max_Q_e": tf.reduce_mean(tf.reduce_max(Q_i_list, axis=-1))
+                })
             self.logger.log(metrics, self.step)
-        greedy_action = tf.argmax(q_values, axis=1, output_type=tf.int32)
+        # Compute sum of extrinsic and intrinsic Q values
+        Q_list += beta * Q_i_list
+
+        # Compute action using epsilon greedy
+        greedy_action = tf.argmax(Q_list, axis=1, output_type=tf.int32)
         random_action = self._randint(state[2])
         random_flag = tf.cast(tf.random.uniform(
             shape=greedy_action.shape) < self.eps, tf.int32)
@@ -114,30 +175,56 @@ class Actor:
 
     def _episode(self, training: bool = True):
         graph, status, mask = self.env.reset()
+        if self.use_rnd:
+            # encode graph using Q(s, a, j: theta_i)
+            rnd_graph_embedding = self.rnd_encoder(graph)
+        else:
+            rnd_graph_embedding = None
         graph_embedding = self.encoder(graph)
+
         done, episode_reward, ones = self._init_episode()
         while tf.math.logical_not(tf.reduce_all(done == ones)):
             # Avoid duplicate encoding
             decoder_input = [graph_embedding, status, mask]
-            action, reward, next_state, done = self._act(
-                decoder_input, training)
+            inputs = {
+                "decoder_input": decoder_input,
+                "training": training
+            }
+            # feed mode vector as decoder input when using rnd
+            if self.use_rnd:
+                decoder_input.append(self.ucb.mode)
+                rnd_decoder_input = [
+                    rnd_graph_embedding, status, mask, self.ucb.mode]
+                inputs.update(
+                    {"rnd_decoder_input": rnd_decoder_input})
+            action, reward, next_state, done = self._act(**inputs)
             _, next_status, next_mask = next_state
             if training:
+                inputs = {
+                    "graph": graph,
+                    "status": status,
+                    "mask": mask,
+                    "action": action,
+                    "reward": reward,
+                    "next_status": next_status,
+                    "next_mask": next_mask,
+                    "done": done
+                }
+                if self.use_rnd:
+                    inputs.update({
+                        "mode": self.ucb.mode
+                    })
                 self._memorize(
-                    graph=graph,
-                    status=status,
-                    mask=mask,
-                    action=action,
-                    reward=reward,
-                    next_status=next_status,
-                    next_mask=next_mask,
-                    done=done
+                    **inputs
                 )
             episode_reward += reward
             _, status, mask = next_state
             if training:
                 self._on_step_end()
         if training:
+            # execute ucb step
+            if self.ucb is not None:
+                self.ucb.step(episode_reward)
             metrics = {
                 "training: episode_reward": tf.reduce_mean(episode_reward),
                 "eps": self.eps
@@ -161,6 +248,10 @@ class Actor:
         graph, status, mask = self.env.reset()
         graph_embedding = self.encoder(graph)
         self.decoder([graph_embedding, status, mask])
+        if self.use_rnd:
+            graph, status, mask = self.env.reset()
+            graph_embedding = self.rnd_encoder(graph)
+            self.rnd_decoder([graph_embedding, status, mask])
 
     def _init_episode(self):
         shape = (self.batch_size,)
@@ -270,3 +361,51 @@ class Actor:
         decoder_path = pathlib.Path(path) / "decoder"
         self.encoder.load_weights(encoder_path)
         self.decoder.load_weights(decoder_path)
+
+
+class SlidingWindowUCB:
+    def __init__(self, n_modes: tf.TensorShape, window_size: int, beta: float, eps: float):
+        self._mode = np.eye(n_modes)[0]
+        self.beta = beta
+        self.eps = eps
+        self.episode_rewards = deque(maxlen=window_size)
+        self.modes = deque(maxlen=window_size)
+
+    def reset(self):
+        return self._mode
+
+    def step(self, episode_reward: tf.Tensor):
+        batch_size = episode_reward.shape[0]
+        # B
+        episode_reward = np.array(episode_reward)
+        # List of (M,)
+        episode_rewards = [
+            reward * self.mode for reward in np.split(episode_reward, batch_size)]
+        # List of (M,)
+        modes = [self.mode for _ in range(batch_size)]
+        self._append(episode_rewards, modes)
+        # Update mode using epsilon greedy algorithm
+        n_modes = self.modes.shape[0]
+        if np.random.random() < self.eps:
+            self._mode = np.eye(n_modes)[np.random.randint(n_modes)]
+        else:
+            # M
+            rewards = np.sum(np.stack(self.episode_rewards), axis=0)
+            # M
+            modes = np.sum(np.stack(self.modes), axis=0)
+            # M
+            mean_rewards = rewards / (modes + 1)
+            # M
+            exploration_term = np.sqrt(np.log(np.sum(modes)) / modes)
+            # M
+            score = mean_rewards + self.beta * exploration_term
+            # M
+            self._mode = np.eye(n_modes)[np.argmax(score)]
+
+    def _append(self, rewards: List[np.ndarray], modes: List[np.ndarray]):
+        self.episode_rewards.extend(rewards)
+        self.modes.extend(modes)
+
+    @property
+    def mode(self) -> np.ndarray:
+        return deepcopy(self._mode)
