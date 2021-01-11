@@ -106,18 +106,21 @@ class Learner:
             self.expert_buffer.add(data)
         # Build RND
         if self.rnd_builder:
-            self.rnd = self.rnd_builder()
-            self.rnd_encoder, self.rnd_decoder = self.network_builder()
-            self.rnd_encoder_target, self.rnd_decoder_target = self.network_builder()
-            # M
-            assert isinstance(self.beta, list)
-            assert isinstance(self.gamma, list)
-            self.beta = tf.expand_dims(tf.constant(self.beta), axis=0)
-            self.gamma = tf.expand_dims(tf.constant(self.gamma), axis=0)
-            self.intrinsic_td_optimizer = tf.keras.optimizers.Adam(
-                self.learning_rate)
-            self.intrinsic_tc_optimizer = tf.keras.optimizers.Adam(
-                self.learning_rate)
+            self._prepare_rnd()
+
+    def _prepare_rnd(self):
+        self.rnd = self.rnd_builder()
+        self.rnd_encoder, self.rnd_decoder = self.network_builder()
+        self.rnd_encoder_target, self.rnd_decoder_target = self.network_builder()
+        # M
+        assert isinstance(self.beta, list)
+        assert isinstance(self.gamma, list)
+        self.beta = tf.expand_dims(tf.constant(self.beta), axis=0)
+        self.gamma = tf.expand_dims(tf.constant(self.gamma), axis=0)
+        self.intrinsic_td_optimizer = tf.keras.optimizers.Adam(
+            self.learning_rate)
+        self.intrinsic_tc_optimizer = tf.keras.optimizers.Adam(
+            self.learning_rate)
 
     def _train(self):
         expert_batch_size = int(self.batch_size * self.expert_ratio)
@@ -138,7 +141,7 @@ class Learner:
             time.sleep(1)
             return None
 
-    # @tf.function
+    @tf.function
     def _train_on_batch(
         self,
         graph,
@@ -160,6 +163,7 @@ class Learner:
         # Compute next action based on Q value
         # B, N
         if mode is not None:
+            mode = tf.cast(mode, tf.float32)
             next_inputs = graph, next_status, next_mask, mode
             inputs = graph, status, mask, mode
 
@@ -184,7 +188,7 @@ class Learner:
             # B, N
             next_Q_i_list = self._inference(
                 *next_inputs, reward="intrinsic", target=False)
-            next_Q_list = next_Q_list + beta * next_Q_i_list
+            next_Q_list = next_Q_list + tf.expand_dims(beta, -1) * next_Q_i_list
         else:
             next_Q_i_list = None
 
@@ -352,7 +356,7 @@ class Learner:
         else:
             raise ValueError("reward must be either intrinsic or extrinsic")
         graph_embedding = encoder(graph)
-        if mode:
+        if mode is not None:
             inputs = [graph_embedding, status, mask, mode]
         else:
             inputs = [graph_embedding, status, mask]

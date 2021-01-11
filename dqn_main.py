@@ -19,8 +19,10 @@ if __name__ == '__main__':
         "./expert_data/100nodes1000samples20201218141310.dat",
         "./expert_data/100nodes1000samples20201218135738.dat",
     ]
+
     save_path = None
-    args = {
+    use_rnd = True
+    base = {
         "n_parallels": 16,
         "n_nodes": n_nodes,
         "n_episodes": 100000,
@@ -36,9 +38,9 @@ if __name__ == '__main__':
         "final_ln": True,
         "decoder_mha": "gate",
         "use_graph_context": False,
-        "buffer_size": 1000000,
-        "eps_start": 0.5,
-        "eps_end": 0.15,
+        "buffer_size": 10000000,
+        "eps_start": 0.,
+        "eps_end": 0.,
         "annealing_step": 100000,
         "data_push_freq": 5,
         "download_weights_freq": 5,
@@ -53,9 +55,13 @@ if __name__ == '__main__':
         "reward_on_episode": False,
         "save_path": save_path,
         "load_path": None,
-        "expert_ratio": 0.15,
+        "expert_ratio": 0.,
         "data_path_list": data_path_list,
-        "use_rnd": False,
+        "use_rnd": use_rnd,
+
+    }
+
+    rnd_args = {
         "rnd_d_model": 64,
         "rnd_depth": 2,
         "rnd_n_heads": 8,
@@ -65,12 +71,16 @@ if __name__ == '__main__':
         "rnd_transformer": "preln",
         "rnd_final_ln": True,
         "rnd_use_graph_context": True,
-        "beta": [0., 0.2, 0.4, 0.6, 0.8, 1],
         "ucb_window_size": 16*50,
         "ucb_eps": 0.5,
-        "ucb_beta": 1,
+        "ucb_beta": 1.,
+        "beta": [0., 0.05, 0.1, 0.15, 0.2, 0.25],
+        "gamma": [0.999, 0.998, 0.997, 0.996, 0.995, 0.994],
     }
+    if use_rnd:
+        base.update(rnd_args)
+
     dqn = TSPDQN(
-        **args
+        **base
     )
     dqn.start()

@@ -12,10 +12,11 @@ from tspmdp.modules.functions import get_args
 from tspmdp.modules.rnd import RNDBuilder
 from tspmdp.network_builder import CustomizableNetworkBuilder
 
-NON_DISPLAY_HPARAMS = ["data_path_list", "save_path", "load_path", "logdir"]
+NON_DISPLAY_HPARAMS = ["data_path_list",
+                       "save_path", "load_path", "logdir", "beta", "gamma"]
 
 
-def create_server_args(size, n_nodes, n_step, gamma):
+def create_server_args(size, n_nodes, n_step, gamma, n_modes):
     env_dict = {
         "graph": {"shape": (n_nodes, 2), "dtype": np.float32},
         "status": {"shape": (2,), "dtype": np.int32},
@@ -26,6 +27,9 @@ def create_server_args(size, n_nodes, n_step, gamma):
         "next_mask": {"shape": (n_nodes,), "dtype": np.int32},
         "done": {"shape": (1,), "dtype": np.int32},
     }
+    if n_modes > 0:
+        env_dict["mode"] = {"shape": (n_modes), "dtype": np.int32}
+
     # Nstep = {"size": n_step,
     #          "gamma": gamma,
     #          "rew": "reward",
@@ -144,8 +148,9 @@ class TSPDQN:
             logger_builder = None
 
         # Define server
+        n_modes = len(beta) if use_rnd else 0
         args = create_server_args(
-            size=buffer_size, n_nodes=n_nodes, n_step=n_step, gamma=gamma)
+            size=buffer_size, n_nodes=n_nodes, n_step=n_step, gamma=gamma, n_modes=n_modes)
         self.server = Server(**args)
 
         # Define expert data loader
