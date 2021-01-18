@@ -6,16 +6,21 @@ import tensorflow as tf
 @tf.keras.utils.register_keras_serializable()
 class SourceGenerator(tf.keras.layers.Layer):
 
-    def __init__(self, use_graph_context=True):
+    def __init__(self, use_graph_context: bool = True, accept_mode: bool = False):
         super().__init__()
         self.flatten = tf.keras.layers.Flatten()
         self.use_graph_context = use_graph_context
         self.ln = tf.keras.layers.LayerNormalization()
+        self.accept_mode = accept_mode
 
     def build(self, input_shape):
         _, _, D = input_shape[0]
         self.vector_dense = tf.keras.layers.Dense(D, activation='relu')
         self.final_dense = tf.keras.layers.Dense(D, activation='relu')
+        if self.accept_mode:
+            self.mode_dense = tf.keras.layers.Dense(D, activation='relu')
+        else:
+            self.mode_dense = None
         super().build(input_shape)
 
     def call(self, inputs: List[tf.Tensor]):
@@ -44,10 +49,20 @@ class SourceGenerator(tf.keras.layers.Layer):
             embedding = self.flatten(
                 tf.concat([indice_embedding, graph_embedding], axis=-2))
         else:
+            # B, D
             embedding = self.flatten(indice_embedding)
+
+        if self.accept_mode:
+            # B, M
+            mode = inputs[2]
+            # B, D
+            mode_embedding = self.mode_dense(mode)
+            # B, *
+            embedding = tf.concat([embedding, mode_embedding], axis=-1)
+
+        # B, *
         embedding = self.final_dense(embedding)
         embedding = self.ln(embedding)
-
         return tf.expand_dims(embedding, -2)
 
     def _indice_embedding(self, H, indice):

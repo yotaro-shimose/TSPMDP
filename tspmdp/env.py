@@ -4,6 +4,7 @@ Once instances are created, all of the process(step, reset) must be compiled by 
 integer programming.
 """
 import tensorflow as tf
+from typing import List
 
 
 class TSPMDP(tf.Module):
@@ -132,7 +133,7 @@ class TSPMDP(tf.Module):
         self.last_masks.assign(masks)
         return states
 
-    def get_states(self):
+    def get_states(self) -> List[tf.Tensor]:
         # B, N
         masks = self._get_mask()
 
