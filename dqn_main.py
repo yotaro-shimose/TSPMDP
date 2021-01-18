@@ -9,7 +9,7 @@ from tspmdp.dqn.dqn import TSPDQN
 # - parametrize to switch RND
 
 if __name__ == '__main__':
-    multiprocessing.set_start_method("spawn")
+    multiprocessing.set_start_method("spawn", True)
     n_nodes = 100
     date = datetime.datetime.today().strftime("%Y%m%d%H%M%S/")
     logdir = str(pathlib.Path("./logs/") / "DQN_EXP" /
@@ -38,15 +38,15 @@ if __name__ == '__main__':
         "final_ln": True,
         "decoder_mha": "gate",
         "use_graph_context": False,
-        "buffer_size": 10000000,
+        "buffer_size": 1000000,
         "eps_start": 0.,
         "eps_end": 0.,
         "annealing_step": 100000,
         "data_push_freq": 5,
         "download_weights_freq": 5,
         "n_learner_epochs": 1000000,
-        "learner_batch_size": 128,
-        "learning_rate": 1e-4,
+        "learner_batch_size": 256,
+        "learning_rate": 1e-3,
         "upload_freq": 100,
         "sync_freq": 100,
         "scale_value_function": False,
@@ -74,8 +74,8 @@ if __name__ == '__main__':
         "ucb_window_size": 16*50,
         "ucb_eps": 0.5,
         "ucb_beta": 1.,
-        "beta": [0., 0.05, 0.1, 0.15, 0.2, 0.25],
-        "gamma": [0.999, 0.998, 0.997, 0.996, 0.995, 0.994],
+        "beta": [0., 0.1, 0.2, 0.25, 0.5, 1.0],
+        "gamma": [0.999, 0.999, 0.999, 0.999, 0.999, 0.999],
     }
     if use_rnd:
         base.update(rnd_args)

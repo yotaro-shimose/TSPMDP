@@ -112,4 +112,8 @@ class RandomNetworkDistillation(tf.keras.models.Model):
         self.mean.assign(self.mean / new_count *
                          self.step_count + tf.reduce_sum(error) / new_count)
         std = self.mean_squared - tf.square(self.mean)
-        return (error - self.mean) / std
+
+        # Update step count
+        self.step_count.assign_add(B)
+        # return (error - self.mean) / std
+        return error / std

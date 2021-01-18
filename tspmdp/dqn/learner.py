@@ -2,6 +2,7 @@ import time
 from typing import Callable, List, Union
 
 import tensorflow as tf
+import tensorflow_addons as tfa
 from tspmdp.dqn.server import ReplayBuffer, Server
 from tspmdp.logger import TFLogger
 
@@ -88,10 +89,12 @@ class Learner:
         self.encoder, self.decoder = self.network_builder()
         self.encoder_target, self.decoder_target = self.network_builder()
         # Build Optimizer
-        self.extrinsic_td_optimizer = tf.keras.optimizers.Adam(
+        # self.extrinsic_td_optimizer = tf.keras.optimizers.Adam(
+        #     self.learning_rate)
+        self.extrinsic_td_optimizer = tfa.optimizers.RectifiedAdam(
             self.learning_rate)
-        self.extrinsic_tc_optimizer = tf.keras.optimizers.Adam(
-            self.learning_rate)
+        # self.extrinsic_tc_optimizer = tf.keras.optimizers.Adam(
+        #     self.learning_rate)
         # Build logger
         if self.logger_builder:
             self.logger = self.logger_builder()
@@ -119,8 +122,8 @@ class Learner:
         self.gamma = tf.expand_dims(tf.constant(self.gamma), axis=0)
         self.intrinsic_td_optimizer = tf.keras.optimizers.Adam(
             self.learning_rate)
-        self.intrinsic_tc_optimizer = tf.keras.optimizers.Adam(
-            self.learning_rate)
+        # self.intrinsic_tc_optimizer = tf.keras.optimizers.Adam(
+        #     self.learning_rate)
 
     def _train(self):
         expert_batch_size = int(self.batch_size * self.expert_ratio)
@@ -188,7 +191,8 @@ class Learner:
             # B, N
             next_Q_i_list = self._inference(
                 *next_inputs, reward="intrinsic", target=False)
-            next_Q_list = next_Q_list + tf.expand_dims(beta, -1) * next_Q_i_list
+            next_Q_list = next_Q_list + \
+                tf.expand_dims(beta, -1) * next_Q_i_list
         else:
             next_Q_i_list = None
 

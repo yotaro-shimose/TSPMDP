@@ -28,7 +28,7 @@ def create_server_args(size, n_nodes, n_step, gamma, n_modes):
         "done": {"shape": (1,), "dtype": np.int32},
     }
     if n_modes > 0:
-        env_dict["mode"] = {"shape": (n_modes), "dtype": np.int32}
+        env_dict["mode"] = {"shape": (n_modes,), "dtype": np.int32}
 
     # Nstep = {"size": n_step,
     #          "gamma": gamma,
@@ -216,6 +216,7 @@ class TSPDQN:
             ucb_beta=ucb_beta
         )
         self.actor = Process(target=self.actor.start)
+
         # Define learner
         self.learner = Learner(
             server=self.server,
@@ -235,6 +236,7 @@ class TSPDQN:
             rnd_builder=rnd_builder,
             beta=beta,
         )
+
         self.learner = Process(target=self.learner.start)
 
     def start(self):
@@ -244,3 +246,6 @@ class TSPDQN:
         self.learner.start()
         # Run server
         self.server.run()
+
+        self.actor.join()
+        self.learner.join()
