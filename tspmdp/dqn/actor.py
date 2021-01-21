@@ -328,23 +328,10 @@ class Actor:
                 alignment += (val)
             return alignment
 
-        def dict_transpose(dictionary: dict) -> List[dict]:
-            length = len(list(dictionary.values())[0])
-            keys = dictionary.keys()
-            data = []
-            for i in range(length):
-                transition = {}
-                for key in keys:
-                    transition[key] = dictionary[key][i]
-                data.append(transition)
-            return data
-
         # Align nested data
         alignment = map_dict(align, self.local_buffer)
-        # Split them into list of dictionary
-        data = dict_transpose(alignment)
         # Flush them into the server
-        self.server.add(data)
+        self.server.add(alignment)
         # Clear local buffer
         self.local_buffer = defaultdict(list)
 
