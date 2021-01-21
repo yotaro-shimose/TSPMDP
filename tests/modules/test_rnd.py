@@ -1,4 +1,4 @@
-from tspmdp.dqn.rnd import RandomNetworkDistillation
+from tspmdp.modules.rnd import RandomNetworkDistillation
 import tensorflow as tf
 import gym
 import numpy as np
