@@ -136,6 +136,7 @@ class Actor:
         next_state, reward, done = self.env.step(action)
         return action, reward, next_state, done
 
+    @tf.function
     def _get_action(
         self,
         state: List[tf.Tensor],
