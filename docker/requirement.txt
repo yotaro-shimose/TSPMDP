@@ -6,3 +6,4 @@ ortools
 autopep8
 tensorflow-addons
 tensorflow-probability
+gym

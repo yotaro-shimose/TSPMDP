@@ -47,11 +47,8 @@ class Server(Process):
     def _upload(self, parameter: Any) -> None:
         self.parameter = parameter
 
-    def _add(self, data: Sequence[Dict[str, np.ndarray]]) -> None:
-        for d in data:
-            self.buffer.add(**d)
-            if d[self.done_string]:
-                self.buffer.on_episode_end()
+    def _add(self, data: Dict[str, Sequence[np.ndarray]]) -> None:
+        self.buffer.add(**data)
 
     def _sample(self, size: int) -> Dict[str, np.ndarray]:
         if self.buffer.get_stored_size() < self.min_storage:
