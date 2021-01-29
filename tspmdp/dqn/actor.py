@@ -16,6 +16,30 @@ def map_dict(func, arg_dict: dict):
     return {key: func(arg) for key, arg in arg_dict.items()}
 
 
+def masked_mean_variance(x: tf.Tensor, mask: tf.Tensor):
+    """compute mean variance of a rank 2 tensor using mask
+
+    Args:
+        x (tf.Tensor): B, N tensor to compute variance on
+        mask (tf.Tensor): B, N mask to compute variance without invalid actions
+
+    Returns:
+        tf.Tensor: Rank 0 mean of variance
+    """
+    # B, N
+    mask = tf.cast(mask, tf.float32)
+    # B, N
+    x = x * mask
+    # B
+    divisor = tf.reduce_sum(mask, axis=-1)
+    # B
+    x_mean = tf.reduce_sum(x, axis=-1) / divisor
+    # B
+    x_squared = tf.reduce_sum(x ** 2, axis=-1) / divisor
+    variance = x_squared - x_mean ** 2
+    return tf.reduce_mean(variance)
+
+
 # TODO Betaの計算 & メモライズ
 
 class Actor:
@@ -136,30 +160,45 @@ class Actor:
         next_state, reward, done = self.env.step(action)
         return action, reward, next_state, done
 
-    @tf.function
     def _get_action(
         self,
         state: List[tf.Tensor],
         training: bool = True,
         rnd_state: List[tf.Tensor] = None,
     ):
+        # Metrics to display
+        metrics = dict()
+        # Mask
+        mask = state[2]
         # Compute extrinsic Q values
         Q_list = self.decoder(state)
+        # Mean extrinsic Q variance
+        mean_variance = masked_mean_variance(Q_list, mask)
+        metrics.update({"extrinsic_Q_variance": mean_variance})
+
         # Compute intrinsic Q values when using rnd
         if self.use_rnd:
             Q_i_list = self.rnd_decoder(rnd_state)
+
             # beta should be zero during evaluation phase
             # B or ()
             beta = tf.reduce_sum(self.beta *
                                  tf.cast(self.ucb.mode, tf.float32), axis=-1) if training else 0.
+            # Mean intrinsic Q variance
+            mean_variance = masked_mean_variance(
+                Q_i_list * tf.expand_dims(beta, -1), mask)
+            metrics.update({
+                "mean_beta": tf.reduce_mean(beta),
+                "intrinsic_Q_variance": mean_variance
+            })
         else:
             Q_i_list = tf.zeros(Q_list.shape, dtype=tf.float32)
             beta = 0.
         # Log metrics
         if self.logger:
-            metrics = {
+            metrics.update({
                 "max_Q_extrinsic": tf.reduce_mean(tf.reduce_max(Q_list, axis=-1)),
-            }
+            })
             if self.use_rnd:
                 metrics.update({
                     "max_Q_intrinsic": tf.reduce_mean(tf.reduce_max(Q_i_list, axis=-1))
@@ -170,7 +209,7 @@ class Actor:
 
         # Compute action using epsilon greedy
         greedy_action = tf.argmax(Q_list, axis=1, output_type=tf.int32)
-        random_action = self._randint(state[2])
+        random_action = self._randint(mask)
         random_flag = tf.cast(tf.random.uniform(
             shape=greedy_action.shape) < self.eps, tf.int32)
         if training:
@@ -337,11 +376,18 @@ class Actor:
         self.local_buffer = defaultdict(list)
 
     def _download_weights(self):
-        download = self.server.download()
-        if download is not None:
-            encoder_weights, decoder_weights = download
-            self.encoder.set_weights(encoder_weights)
-            self.decoder.set_weights(decoder_weights)
+        weights = self.server.download()
+        if weights is not None:
+            if self.use_rnd:
+                encoder_weights, decoder_weights, rnd_encoder_weights, rnd_decoder_weights = weights
+                self.encoder.set_weights(encoder_weights)
+                self.decoder.set_weights(decoder_weights)
+                self.rnd_encoder.set_weights(encoder_weights)
+                self.rnd_decoder.set_weights(decoder_weights)
+            else:
+                encoder_weights, decoder_weights = weights
+                self.encoder.set_weights(encoder_weights)
+                self.decoder.set_weights(decoder_weights)
 
     def save(self, path: str):
         encoder_path = pathlib.Path(path) / "encoder"

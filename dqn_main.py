@@ -43,12 +43,12 @@ if __name__ == '__main__':
         "eps_end": 0.,
         "annealing_step": 100000,
         "data_push_freq": 5,
-        "download_weights_freq": 5,
+        "download_weights_freq": 10,
         "n_learner_epochs": 1000000,
         "learner_batch_size": 256,
         "learning_rate": 1e-3,
         "upload_freq": 100,
-        "sync_freq": 100,
+        "sync_freq": 500,
         "scale_value_function": False,
         "logdir": logdir,
         "evaluation_freq": 10,
@@ -74,8 +74,8 @@ if __name__ == '__main__':
         "ucb_window_size": 16*50,
         "ucb_eps": 0.5,
         "ucb_beta": 1.,
-        "beta": [0., 0.1, 0.2, 0.25, 0.5, 1.0],
-        "gamma": [0.999, 0.999, 0.999, 0.999, 0.999, 0.999],
+        "beta": [0., 0.05, 0.1, 0.2, 0.25, 0.5, 1.0],
+        "gamma": [0.999, 0.999, 0.999, 0.999, 0.999, 0.999, 0.999],
     }
     if use_rnd:
         base.update(rnd_args)
