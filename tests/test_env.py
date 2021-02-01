@@ -90,3 +90,25 @@ def test_env_reward_on_episode():
             original_reward == 0.) or j == actions.shape[1] - 1
         copy_sum += copy_reward
     tf.assert_equal(original_reward, copy_sum)
+
+
+def test_env_rewards():
+    batch_size = 1
+    n_nodes = 4
+    reward_on_episode = False
+    env = TSPMDP(batch_size=batch_size, n_nodes=n_nodes,
+                 reward_on_episode=reward_on_episode)
+    env.reset()
+    state_dict = env.export_states()
+    new_coordinates = tf.constant([[[0., 0.],
+                                    [0., 1.],
+                                    [1., 1.],
+                                    [1., 0.]]])
+    state_dict["coordinates"] = new_coordinates
+    env.import_states(state_dict)
+    actions = [1, 2, 3]
+    episode_reward = 0
+    for action in actions:
+        _, reward, _ = env.step(tf.constant([action], dtype=tf.int32))
+        episode_reward += reward
+    assert episode_reward == -n_nodes

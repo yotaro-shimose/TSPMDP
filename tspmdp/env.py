@@ -55,6 +55,7 @@ class TSPMDP(tf.Module):
         self.n_nodes = n_nodes
         self.reward_on_episode = reward_on_episode
 
+    @tf.function
     def step(self, actions: tf.Tensor):
         """step function
 

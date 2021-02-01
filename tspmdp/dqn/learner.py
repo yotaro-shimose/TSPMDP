@@ -70,6 +70,7 @@ class Learner:
         self.expert_ratio = expert_ratio
         self.data_generator = data_generator
         self.replay_buffer_builder: ReplayBuffer = replay_buffer_builder
+        self.use_rnd = rnd_builder is not None
         self.rnd_builder = rnd_builder
         self.rnd: tf.keras.Model = None
         self.beta: Union[List[float], float] = beta
@@ -108,7 +109,7 @@ class Learner:
             data = self.data_generator()
             self.expert_buffer.add(data)
         # Build RND
-        if self.rnd_builder:
+        if self.use_rnd:
             self._prepare_rnd()
 
     def _prepare_rnd(self):
@@ -165,7 +166,7 @@ class Learner:
 
         # Compute next action based on Q value
         # B, N
-        if mode is not None:
+        if self.use_rnd:
             mode = tf.cast(mode, tf.float32)
             next_inputs = graph, next_status, next_mask, mode
             inputs = graph, status, mask, mode
@@ -187,7 +188,7 @@ class Learner:
         next_Q_e_list = self._inference(
             *next_inputs, reward="extrinsic", target=False)
         next_Q_list = tf.identity(next_Q_e_list)
-        if mode is not None:
+        if self.use_rnd:
             # B, N
             next_Q_i_list = self._inference(
                 *next_inputs, reward="intrinsic", target=False)
@@ -251,7 +252,7 @@ class Learner:
             # "extrinsic tc loss": tc_loss
         }
 
-        if mode is not None:
+        if self.use_rnd:
 
             # Compute intrinsic target
             # B
@@ -329,7 +330,12 @@ class Learner:
         self.decoder_target.set_weights(self.decoder.get_weights())
 
     def _upload(self):
-        weights = self.encoder.get_weights(), self.decoder.get_weights()
+        if self.use_rnd:
+            weights = self.encoder.get_weights(), self.decoder.get_weights(),\
+                self.rnd_encoder.get_weights(), self.rnd_decoder.get_weights()
+        else:
+            weights = self.encoder.get_weights(), self.decoder.get_weights()
+
         self.server.upload(weights)
 
     def _on_train_end(self):

@@ -1,3 +1,4 @@
+from tspmdp.dqn.actor import masked_mean_variance
 import pytest
 import tensorflow as tf
 
@@ -48,3 +49,10 @@ def test_swucb(is_beta_zero: bool):
             tf.stack(mean_modes[-int(iteration/10):])) >= M - 1 - assert_eps
     else:
         assert int(tf.reduce_mean(tf.stack(mean_modes))) == int((M-1) / 2)
+
+
+def test_masked_mean_variance():
+    x = tf.constant([[3, 1, 3, 1, 3, 1, 9, 25, 3, 1]], dtype=tf.float32)
+    mask = tf.constant([[1, 1, 1, 1, 1, 1, 0, 0, 1, 1]], dtype=tf.int32)
+    mean_variance = masked_mean_variance(x, mask)
+    assert mean_variance == 1.

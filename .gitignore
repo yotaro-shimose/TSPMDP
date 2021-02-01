@@ -19,3 +19,6 @@ temp.py
 # expert data
 *.dat
 
+# nohup output
+nohup.out
+core
