@@ -142,12 +142,13 @@ class Actor:
 
     def start(self):
         # This method can be executed in subprocess
-        self._initialize()
-        for episode in range(self.n_episodes):
-            metrics = self._episode(training=True)
-            if self.logger:
-                self.logger.log(metrics, episode)
-            self._on_episode_end()
+        with tf.device("/gpu:1"):
+            self._initialize()
+            for episode in range(self.n_episodes):
+                metrics = self._episode(training=True)
+                if self.logger:
+                    self.logger.log(metrics, episode)
+                self._on_episode_end()
 
     def _act(
         self,
@@ -382,8 +383,8 @@ class Actor:
                 encoder_weights, decoder_weights, rnd_encoder_weights, rnd_decoder_weights = weights
                 self.encoder.set_weights(encoder_weights)
                 self.decoder.set_weights(decoder_weights)
-                self.rnd_encoder.set_weights(encoder_weights)
-                self.rnd_decoder.set_weights(decoder_weights)
+                self.rnd_encoder.set_weights(rnd_encoder_weights)
+                self.rnd_decoder.set_weights(rnd_decoder_weights)
             else:
                 encoder_weights, decoder_weights = weights
                 self.encoder.set_weights(encoder_weights)
