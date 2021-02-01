@@ -23,13 +23,13 @@ if __name__ == '__main__':
     save_path = None
     use_rnd = True
     base = {
-        "n_parallels": 16,
+        "n_parallels": 256,
         "n_nodes": n_nodes,
         "n_episodes": 100000,
         "n_step": 1,
         "gamma": 0.99,
-        "d_model": 128,
-        "depth": 3,
+        "d_model": 256,
+        "depth": 6,
         "n_heads": 8,
         "d_key": 16,
         "d_hidden": 128,
@@ -71,7 +71,7 @@ if __name__ == '__main__':
         "rnd_transformer": "preln",
         "rnd_final_ln": True,
         "rnd_use_graph_context": True,
-        "ucb_window_size": 16*50,
+        "ucb_window_size": 100,
         "ucb_eps": 0.5,
         "ucb_beta": 1.,
         "beta": [0., 0.05, 0.1, 0.2, 0.25, 0.5, 1.0],
