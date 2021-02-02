@@ -15,6 +15,7 @@ class CustomizableNetworkBuilder:
         final_ln: bool = True,
         decoder_mha: str = "softmax",
         use_graph_context: bool = True,
+        output_scale: float = -1.,
     ):
         self.d_model = d_model
         self.depth = depth
@@ -26,6 +27,7 @@ class CustomizableNetworkBuilder:
         self.final_ln = final_ln
         self.decoder_mha = decoder_mha
         self.use_graph_context = use_graph_context
+        self.output_scale = output_scale
 
     def __call__(self):
         encoder = CustomizableEncoder(
@@ -47,6 +49,7 @@ class CustomizableNetworkBuilder:
             use_graph_context=self.use_graph_context,
             d_model=self.d_model,
             d_hidden=self.d_hidden,
+            output_scale=self.output_scale,
         )
 
         return encoder, decoder

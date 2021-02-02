@@ -382,8 +382,8 @@ class Actor:
                 encoder_weights, decoder_weights, rnd_encoder_weights, rnd_decoder_weights = weights
                 self.encoder.set_weights(encoder_weights)
                 self.decoder.set_weights(decoder_weights)
-                self.rnd_encoder.set_weights(encoder_weights)
-                self.rnd_decoder.set_weights(decoder_weights)
+                self.rnd_encoder.set_weights(rnd_encoder_weights)
+                self.rnd_decoder.set_weights(rnd_decoder_weights)
             else:
                 encoder_weights, decoder_weights = weights
                 self.encoder.set_weights(encoder_weights)

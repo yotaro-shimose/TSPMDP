@@ -104,8 +104,9 @@ class TSPDQN:
         final_ln: bool = True,
         decoder_mha: str = "softmax",
         use_graph_context: bool = True,
+        output_scale: bool = 100.,
         logdir: str = None,
-        buffer_size=1000000,
+        buffer_size: int = 1000000,
         eps_start: float = 1.0,
         eps_end: float = 0.01,
         annealing_step: int = 100000,
@@ -173,7 +174,8 @@ class TSPDQN:
             transformer=transformer,
             final_ln=final_ln,
             decoder_mha=decoder_mha,
-            use_graph_context=use_graph_context
+            use_graph_context=use_graph_context,
+            output_scale=output_scale,
         )
         if use_rnd:
             rnd_builder = RNDBuilder(

@@ -2,7 +2,7 @@ import tensorflow as tf
 from typing import List
 from tspmdp.modules.source_generator import SourceGenerator, WouterSourceGenerator
 from tspmdp.modules.functions import cut_off, get_args
-from tspmdp.modules.transformer_block import GTrXLBlock
+from tspmdp.modules.transformer_block import GTrXLBlock, TransformerBlock
 
 
 MHA_TYPES = {
@@ -10,6 +10,7 @@ MHA_TYPES = {
     # "linear": LinearAttention,
     "none": None,
     "gate": GTrXLBlock,
+    "preln": TransformerBlock
 }
 
 INFINITY = 1e+9
@@ -25,8 +26,9 @@ class CustomizableQDecoder(tf.keras.models.Model):
         mha: str = "softmax",
         use_graph_context: bool = True,
         accept_mode: bool = False,
-        d_model=128,  # for transformer block
-        d_hidden=128,  # for transformer block
+        d_model: int = 128,  # for transformer block
+        d_hidden: int = 128,  # for transformer block
+        output_scale: float = -1.,  # for tanh activation
         *args,
         **kwargs
     ):
@@ -58,6 +60,7 @@ class CustomizableQDecoder(tf.keras.models.Model):
         else:
             self.mha = MHAClass(**mha_args)
         self.accept_mode = accept_mode
+        self.output_scale = output_scale
 
     def build(self, input_shape):
         d_model = input_shape[0][-1]
@@ -111,6 +114,10 @@ class CustomizableQDecoder(tf.keras.models.Model):
         scale = tf.sqrt(float(self.d_key))
         # B, 1, N
         QK = tf.matmul(Q, K, transpose_b=True) / scale
+        # Apply tanh activation
+        if self.output_scale > 0:
+            QK = QK / float(self.d_key)
+            QK = self.output_scale * tf.tanh(QK)
         # B, 1, N
         mask = tf.cast(mask, tf.float32)
         mask = (1 - mask) * (-INFINITY)
@@ -211,7 +218,7 @@ class CustomizablePolicyDecoder(tf.keras.models.Model):
         """
         Q = tf.matmul(query, self.wq)
         K = tf.matmul(H, self.wk)
-        scale = tf.sqrt(float(self.d_key))
+        scale = tf.sqrt(float(K.shape[-1]))
         # B, 1, N
         QK = tf.matmul(Q, K, transpose_b=True) / scale
         # B, 1, N
