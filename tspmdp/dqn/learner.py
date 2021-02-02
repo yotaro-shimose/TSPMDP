@@ -250,6 +250,7 @@ class Learner:
         metrics = {
             "extrinsic td loss": td_loss,
             # "extrinsic tc loss": tc_loss
+            "reward_std": tf.math.reduce_std(reward)
         }
 
         if self.use_rnd:

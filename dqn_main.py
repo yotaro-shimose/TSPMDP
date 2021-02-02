@@ -23,7 +23,7 @@ if __name__ == '__main__':
     save_path = None
     use_rnd = True
     base = {
-        "n_parallels": 256,
+        "n_parallels": 64,
         "n_nodes": n_nodes,
         "n_episodes": 100000,
         "n_step": 1,
@@ -38,17 +38,17 @@ if __name__ == '__main__':
         "final_ln": True,
         "decoder_mha": "gate",
         "use_graph_context": False,
-        "buffer_size": 1000000,
-        "eps_start": 0.,
-        "eps_end": 0.,
-        "annealing_step": 100000,
+        "buffer_size": 100000,
+        "eps_start": 0.5,
+        "eps_end": 0.1,
+        "annealing_step": 30000,
         "data_push_freq": 5,
         "download_weights_freq": 10,
         "n_learner_epochs": 1000000,
-        "learner_batch_size": 256,
+        "learner_batch_size": 128,
         "learning_rate": 1e-3,
         "upload_freq": 100,
-        "sync_freq": 500,
+        "sync_freq": 100,
         "scale_value_function": False,
         "logdir": logdir,
         "evaluation_freq": 10,
@@ -74,8 +74,8 @@ if __name__ == '__main__':
         "ucb_window_size": 100,
         "ucb_eps": 0.5,
         "ucb_beta": 1.,
-        "beta": [0., 0.05, 0.1, 0.2, 0.25, 0.5, 1.0],
-        "gamma": [0.999, 0.999, 0.999, 0.999, 0.999, 0.999, 0.999],
+        "beta": [0., 0.25, 0.5, 1.0, 2.0, 3.0],
+        "gamma": [0.999, 0.999, 0.999, 0.999, 0.999, 0.999],
     }
     if use_rnd:
         base.update(rnd_args)

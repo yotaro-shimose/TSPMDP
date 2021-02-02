@@ -94,6 +94,7 @@ class Actor:
         self.ucb_eps = ucb_eps
         self.ucb: SlidingWindowUCB = None
         self.ucb_window_size = ucb_window_size
+        self.gamma = gamma
         if self.use_rnd:
             assert isinstance(beta, list)
             assert isinstance(ucb_window_size, int)
@@ -115,6 +116,8 @@ class Actor:
             # 1, M
             self.beta = tf.expand_dims(tf.constant(
                 self.beta, dtype=tf.float32), axis=0)
+            self.gamma = tf.expand_dims(tf.constant(
+                self.gamma, dtype=tf.float32), axis=0)
             self.rnd_encoder, self.rnd_decoder = self.network_builder()
             # Build ucb
             self.ucb = SlidingWindowUCB(
@@ -226,7 +229,7 @@ class Actor:
             rnd_graph_embedding = None
         graph_embedding = self.encoder(graph)
 
-        done, episode_reward, ones = self._init_episode()
+        done, episode_reward, discounted_reward, ones, gamma, discount_factor = self._init_episode()
         while tf.math.logical_not(tf.reduce_all(done == ones)):
             # Avoid duplicate encoding
             decoder_input = [graph_embedding, status, mask]
@@ -265,6 +268,8 @@ class Actor:
                     **inputs
                 )
             episode_reward += reward
+            discounted_reward += discount_factor * reward
+            discount_factor *= gamma
             _, status, mask = next_state
             if training:
                 self._on_step_end()
@@ -274,11 +279,13 @@ class Actor:
                 self.ucb.step(episode_reward)
             metrics = {
                 "training: episode_reward": tf.reduce_mean(episode_reward),
+                "training: discounted_reward": tf.reduce_mean(discounted_reward),
                 "eps": self.eps
             }
         else:
             metrics = {
                 "evaluation: episode_reward": tf.reduce_mean(episode_reward),
+                "evaluation: discounted_reward": tf.reduce_mean(discounted_reward),
             }
         return metrics
 
@@ -304,8 +311,17 @@ class Actor:
         shape = (self.batch_size,)
         done = tf.zeros(shape, dtype=tf.int32)
         episode_reward = tf.zeros(shape, dtype=tf.float32)
+        discounted_reward = tf.zeros(shape, dtype=tf.float32)
         ones = tf.ones(shape, dtype=tf.int32)
-        return done, episode_reward, ones
+
+        if self.use_rnd:
+            gamma = tf.reduce_sum(
+                self.gamma * tf.cast(self.ucb.mode, tf.float32), axis=-1)
+            discount_factor = tf.ones(gamma.shape)
+        else:
+            gamma = self.gamma
+            discount_factor = tf.constant(1.)
+        return done, episode_reward, discounted_reward, ones, gamma, discount_factor
 
     def _on_step_end(self):
         # Count step
