@@ -218,7 +218,7 @@ class CustomizablePolicyDecoder(tf.keras.models.Model):
         """
         Q = tf.matmul(query, self.wq)
         K = tf.matmul(H, self.wk)
-        scale = tf.sqrt(float(self.d_key))
+        scale = tf.sqrt(float(K.shape[-1]))
         # B, 1, N
         QK = tf.matmul(Q, K, transpose_b=True) / scale
         # B, 1, N
