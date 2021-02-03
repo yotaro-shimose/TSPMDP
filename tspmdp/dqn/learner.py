@@ -2,7 +2,7 @@ import time
 from typing import Callable, List, Union
 
 import tensorflow as tf
-import tensorflow_addons as tfa
+# import tensorflow_addons as tfa
 from tspmdp.dqn.server import ReplayBuffer, Server
 from tspmdp.logger import TFLogger
 
@@ -36,6 +36,7 @@ class Learner:
         gamma=0.9999,
         upload_freq: int = 100,
         sync_freq: int = 50,
+        soft_sync_ratio: float = None,
         scale_value_function: bool = True,
         expert_ratio: float = 0.,
         replay_buffer_builder: Callable = None,
@@ -74,14 +75,15 @@ class Learner:
         self.rnd_builder = rnd_builder
         self.rnd: tf.keras.Model = None
         self.beta: Union[List[float], float] = beta
+        self.soft_sync_ratio = soft_sync_ratio
 
     def start(self):
-
-        self._initialize()
-        for epoch in range(self.n_epochs):
-            metrics = self._train()
-            if self.logger is not None and metrics is not None:
-                self.logger.log(metrics, epoch)
+        with tf.device("/gpu:0"):
+            self._initialize()
+            for epoch in range(self.n_epochs):
+                metrics = self._train()
+                if self.logger is not None and metrics is not None:
+                    self.logger.log(metrics, epoch)
 
     def _initialize(self):
         # Step count
@@ -90,17 +92,17 @@ class Learner:
         self.encoder, self.decoder = self.network_builder()
         self.encoder_target, self.decoder_target = self.network_builder()
         # Build Optimizer
-        # self.extrinsic_td_optimizer = tf.keras.optimizers.Adam(
+        self.extrinsic_td_optimizer = tf.keras.optimizers.Adam(
+            self.learning_rate, epsilon=1e-4, clipnorm=40)
+        # self.extrinsic_td_optimizer = tfa.optimizers.RectifiedAdam(
         #     self.learning_rate)
-        self.extrinsic_td_optimizer = tfa.optimizers.RectifiedAdam(
-            self.learning_rate)
         # self.extrinsic_tc_optimizer = tf.keras.optimizers.Adam(
         #     self.learning_rate)
         # Build logger
         if self.logger_builder:
             self.logger = self.logger_builder()
         # Loss function
-        self._loss_function = tf.keras.losses.Huber()
+        self._loss_function = tf.keras.losses.MSE
         # Expert Buffer
         if self.expert_ratio > 0:
             assert 0 < self.expert_ratio < 1
@@ -122,7 +124,7 @@ class Learner:
         self.beta = tf.expand_dims(tf.constant(self.beta), axis=0)
         self.gamma = tf.expand_dims(tf.constant(self.gamma), axis=0)
         self.intrinsic_td_optimizer = tf.keras.optimizers.Adam(
-            self.learning_rate)
+            self.learning_rate, epsilon=1e-4, clipnorm=40)
         # self.intrinsic_tc_optimizer = tf.keras.optimizers.Adam(
         #     self.learning_rate)
 
@@ -329,11 +331,31 @@ class Learner:
     def _synchronize(self):
         self.encoder_target.set_weights(self.encoder.get_weights())
         self.decoder_target.set_weights(self.decoder.get_weights())
+        if self.use_rnd:
+            self.rnd_encoder_target.set_weights(self.rnd_encoder.get_weights())
+            self.rnd_decoder_target.set_weights(self.rnd_decoder.get_weights())
+
+    def _soft_synchronize(self):
+        def weighted_sum(t: List[tf.Tensor], o: List[tf.Tensor]):
+            return (1 - self.soft_sync_ratio) * t + self.soft_sync_ratio * o
+
+        def softsync(target: tf.keras.Model, online: tf.keras.Model):
+            target_weights = target.get_weights()
+            online_weights = online.get_weights()
+            new_weights = tf.nest.map_structure(
+                weighted_sum, target_weights, online_weights)
+            target.set_weights(new_weights)
+
+        softsync(self.encoder_target, self.encoder)
+        softsync(self.decoder_target, self.decoder)
+        if self.use_rnd:
+            softsync(self.rnd_encoder_target, self.rnd_encoder)
+            softsync(self.rnd_decoder_target, self.rnd_decoder)
 
     def _upload(self):
         if self.use_rnd:
-            weights = self.encoder.get_weights(), self.decoder.get_weights(),\
-                self.rnd_encoder.get_weights(), self.rnd_decoder.get_weights()
+            weights = (self.encoder.get_weights(), self.decoder.get_weights(),
+                       self.rnd_encoder.get_weights(), self.rnd_decoder.get_weights())
         else:
             weights = self.encoder.get_weights(), self.decoder.get_weights()
 
@@ -343,8 +365,11 @@ class Learner:
         # Step count
         self.step += 1
         # Synchronize weights
-        if self.step % self.sync_freq == 0:
-            self._synchronize()
+        if self.soft_sync_ratio > 0.:
+            self._soft_synchronize()
+        else:
+            if self.step % self.sync_freq == 0:
+                self._synchronize()
         # Upload weights
         if self.step % self.upload_freq == 0:
             self._upload()
