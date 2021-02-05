@@ -16,6 +16,27 @@ MHA_TYPES = {
 INFINITY = 1e+9
 
 
+def masked_mean(tensor: tf.Tensor, mask: tf.Tensor) -> tf.Tensor:
+    """compute mean of tensor using mask
+
+    Args:
+        tensor (tf.Tensor): B, 1, N tensor to compute mean on
+        mask (tf.Tensor): B, 1, N mask tensor (0 for not using dimension)
+
+    Returns:
+        tf.Tensor: B, 1, 1 mean tensor
+    """
+    mask = tf.cast(mask, tensor.dtype)
+    # B, 1, N
+    tensor = tensor * mask
+    # B, 1, 1
+    divisor = tf.reduce_sum(mask, axis=-1, keepdims=True)
+    # Avoid 0 division error
+    divisor = tf.cast(divisor == 0., tf.float32) + divisor
+    mean = tf.reduce_sum(tensor, axis=-1, keepdims=True) / divisor
+    return mean
+
+
 @tf.keras.utils.register_keras_serializable()
 class CustomizableQDecoder(tf.keras.models.Model):
     def __init__(
@@ -61,6 +82,11 @@ class CustomizableQDecoder(tf.keras.models.Model):
             self.mha = MHAClass(**mha_args)
         self.accept_mode = accept_mode
         self.output_scale = output_scale
+        # For Dueling Network Value Function
+        self.value_attention = tf.keras.layers.MultiHeadAttention(
+            num_heads=n_heads,
+            key_dim=d_key,
+            output_shape=(1,))
 
     def build(self, input_shape):
         d_model = input_shape[0][-1]
@@ -113,15 +139,22 @@ class CustomizableQDecoder(tf.keras.models.Model):
         K = tf.matmul(H, self.wk)
         scale = tf.sqrt(float(self.d_key))
         # B, 1, N
-        QK = tf.matmul(Q, K, transpose_b=True) / scale
+        advantage = tf.matmul(Q, K, transpose_b=True) / scale
+        # Dueling architecture
+        # B, 1, 1
+        value = self.value_attention(query, H, H, mask)
         # Apply tanh activation
         if self.output_scale > 0:
-            QK = QK / float(self.d_key)
-            QK = self.output_scale * tf.tanh(QK)
+            advantage = self.output_scale * tf.tanh(advantage)
+            value = self.output_scale * tf.tanh(value)
+        # B, 1, N
+        advantage = advantage - tf.stop_gradient(masked_mean(advantage, mask))
+        # B, 1, N
+        q_value = value + advantage
         # B, 1, N
         mask = tf.cast(mask, tf.float32)
         mask = (1 - mask) * (-INFINITY)
-        q_value = QK + mask
+        q_value = q_value + mask
         # now q_value is tensor of shape(B, 1, N) which must be turned into tensor of
         # shape(B, N)
         return tf.squeeze(q_value, axis=1)

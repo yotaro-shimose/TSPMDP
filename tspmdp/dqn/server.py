@@ -5,7 +5,7 @@ import numpy as np
 
 
 class Server(Process):
-    def __init__(self, size, env_dict, n_step_dict=None, min_storage=100, done_string="done"):
+    def __init__(self, size, env_dict, n_step_dict=None, min_storage=10000, done_string="done"):
         super().__init__()
         self.done_string = done_string
         self.queue = Queue()
@@ -85,7 +85,7 @@ class Server(Process):
 
 
 class ReplayBuffer:
-    def __init__(self, size, env_dict, n_step_dict=None, min_storage=100, done_string="done"):
+    def __init__(self, size, env_dict, n_step_dict=None, min_storage=10000, done_string="done"):
         super().__init__()
         self.done_string = done_string
         self.min_storage = min_storage
@@ -105,8 +105,9 @@ class ReplayBuffer:
     def sample(self, size: int) -> Dict[str, np.ndarray]:
         if self.buffer.get_stored_size() < self.min_storage:
             print(
-                f"stored sample {self.buffer.get_stored_size()} is smaller than mininum storage\
-                     size {self.min_storage}. Returning None.")
+                f"stored sample {self.buffer.get_stored_size()} is smaller than mininum storage" +
+                f"size {self.min_storage}. Returning None."
+            )
             return None
         else:
             return self.buffer.sample(size)

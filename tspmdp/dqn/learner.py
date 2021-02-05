@@ -78,12 +78,11 @@ class Learner:
         self.soft_sync_ratio = soft_sync_ratio
 
     def start(self):
-        with tf.device("/gpu:0"):
-            self._initialize()
-            for epoch in range(self.n_epochs):
-                metrics = self._train()
-                if self.logger is not None and metrics is not None:
-                    self.logger.log(metrics, epoch)
+        self._initialize()
+        for epoch in range(self.n_epochs):
+            metrics = self._train()
+            if self.logger is not None and metrics is not None:
+                self.logger.log(metrics, epoch)
 
     def _initialize(self):
         # Step count
