@@ -14,7 +14,7 @@ class NetworkBuilder:
         return network
 
 
-def episode(env, rnd: tf.keras.models.Model):
+def episode(env: gym.Env, rnd: tf.keras.models.Model):
     observation = env.reset()
     done = False
     intrinsic = 0
@@ -28,7 +28,7 @@ def episode(env, rnd: tf.keras.models.Model):
     return intrinsic / step
 
 
-def average_reward(env, rnd, n_episodes):
+def average_reward(env: gym.Env, rnd, n_episodes):
     intrinsic = 0
     for _ in range(n_episodes):
         intrinsic += episode(env, rnd)

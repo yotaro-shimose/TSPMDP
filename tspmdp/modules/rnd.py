@@ -82,7 +82,7 @@ class RNDNetworkBuilder:
 
 
 class RandomNetworkDistillation(tf.keras.models.Model):
-    def __init__(self, network_builder: callable, learning_rate: float = 1e-3):
+    def __init__(self, network_builder: callable, learning_rate: float = 1e-4):
         super().__init__()
         # Random (target) network
         self.random_network: tf.keras.models.Model = network_builder()
@@ -93,7 +93,8 @@ class RandomNetworkDistillation(tf.keras.models.Model):
         # In case you want to change loss function
         self.loss_function = tf.keras.losses.MSE
         # Optimizer to train exploration network
-        self.optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
+        self.optimizer = tf.keras.optimizers.Adam(
+            learning_rate, epsilon=1e-4, clipnorm=40)
         # N
         self.step_count = tf.Variable(tf.constant(0, dtype=tf.float32))
         # E[x^2]

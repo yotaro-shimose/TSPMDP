@@ -5,8 +5,14 @@ import tensorflow as tf
 # import tensorflow_addons as tfa
 from tspmdp.dqn.server import ReplayBuffer, Server
 from tspmdp.logger import TFLogger
+from enum import Enum, auto
 
 INFINITY = 1e+9
+
+
+class RewardOption(Enum):
+    EXTRINSIC = auto()
+    INTRINSIC = auto()
 
 
 def scale(x: tf.Tensor, eps: float = 1e-2) -> tf.Tensor:
@@ -76,6 +82,7 @@ class Learner:
         self.rnd: tf.keras.Model = None
         self.beta: Union[List[float], float] = beta
         self.soft_sync_ratio = soft_sync_ratio
+        self.init_sync_completion = False
 
     def start(self):
         self._initialize()
@@ -90,9 +97,12 @@ class Learner:
         # Build network instances
         self.encoder, self.decoder = self.network_builder()
         self.encoder_target, self.decoder_target = self.network_builder()
+
         # Build Optimizer
-        self.extrinsic_td_optimizer = tf.keras.optimizers.Adam(
-            self.learning_rate, epsilon=1e-4, clipnorm=40)
+        self.extrinsic_td_optimizer = tf.keras.optimizers.RMSprop(
+            self.learning_rate, epsilon=1e-4, clipnorm=4)
+        # self.extrinsic_td_optimizer = tf.keras.optimizers.Adam(
+        #     self.learning_rate, epsilon=1e-4, clipnorm=40)
         # self.extrinsic_td_optimizer = tfa.optimizers.RectifiedAdam(
         #     self.learning_rate)
         # self.extrinsic_tc_optimizer = tf.keras.optimizers.Adam(
@@ -122,7 +132,9 @@ class Learner:
         assert isinstance(self.gamma, list)
         self.beta = tf.expand_dims(tf.constant(self.beta), axis=0)
         self.gamma = tf.expand_dims(tf.constant(self.gamma), axis=0)
-        self.intrinsic_td_optimizer = tf.keras.optimizers.Adam(
+        # self.intrinsic_td_optimizer = tf.keras.optimizers.Adam(
+        #     self.learning_rate, epsilon=1e-4, clipnorm=40)
+        self.intrinsic_td_optimizer = tf.keras.optimizers.RMSprop(
             self.learning_rate, epsilon=1e-4, clipnorm=40)
         # self.intrinsic_tc_optimizer = tf.keras.optimizers.Adam(
         #     self.learning_rate)
@@ -165,7 +177,7 @@ class Learner:
         reward = tf.squeeze(reward)
         done = tf.squeeze(done)
 
-        # Compute next action based on Q value
+        # # Compute next action based on Q value
         # B, N
         if self.use_rnd:
             mode = tf.cast(mode, tf.float32)
@@ -187,12 +199,12 @@ class Learner:
         # Q(s, a, j: theta_e)
         # B, N
         next_Q_e_list = self._inference(
-            *next_inputs, reward="extrinsic", target=False)
+            *next_inputs, reward=RewardOption.EXTRINSIC, target=False)
         next_Q_list = tf.identity(next_Q_e_list)
         if self.use_rnd:
             # B, N
             next_Q_i_list = self._inference(
-                *next_inputs, reward="intrinsic", target=False)
+                *next_inputs, reward=RewardOption.INTRINSIC, target=False)
             next_Q_list = next_Q_list + \
                 tf.expand_dims(beta, -1) * next_Q_i_list
         else:
@@ -204,10 +216,12 @@ class Learner:
 
         # Compute extrinsic target
         # B
-        next_Q_e = tf.reduce_sum(self._inference(
-            *next_inputs, reward="extrinsic", target=True) * one_hot_next_action, axis=-1)
+        next_Q_e_list = self._inference(
+            *next_inputs, reward=RewardOption.EXTRINSIC, target=True)
+        next_Q_e = tf.reduce_sum(next_Q_e_list * one_hot_next_action, axis=-1)
         if self.scale_value_function:
             next_Q_e = rescale(next_Q_e)
+        # B
         target = reward + gamma ** self.n_step * next_Q_e * \
             (1. - tf.cast(done, tf.float32))
         if self.scale_value_function:
@@ -220,9 +234,11 @@ class Learner:
         with tf.GradientTape() as tape:
             # Compute TDError
             # B, N
-            Q_list = self._inference(*inputs, reward="extrinsic", target=False)
+            Q_list = self._inference(
+                *inputs, reward=RewardOption.EXTRINSIC, target=False)
             # B, N
             one_hot_action = tf.one_hot(action, depth=N)
+            # B
             current_Q = tf.reduce_sum(Q_list * one_hot_action, axis=-1)
             td_loss = tf.reduce_mean(self._loss_function(current_Q, target))
 
@@ -256,10 +272,13 @@ class Learner:
 
         if self.use_rnd:
 
-            # Compute intrinsic target
+            # # Compute intrinsic target
+            # B, N
+            next_Q_i_list = self._inference(*next_inputs,
+                                            reward=RewardOption.INTRINSIC, target=True)
             # B
-            next_Q_i = tf.reduce_sum(self._inference(
-                *next_inputs, reward="intrinsic", target=True) * one_hot_next_action, axis=-1)
+            next_Q_i = tf.reduce_sum(
+                next_Q_i_list * one_hot_next_action, axis=-1)
             if self.scale_value_function:
                 next_Q_i = rescale(next_Q_i)
             # B
@@ -277,7 +296,7 @@ class Learner:
                 # Compute TDError
                 # B, N
                 Q_list = self._inference(
-                    *inputs, reward="intrinsic", target=False)
+                    *inputs, reward=RewardOption.INTRINSIC, target=False)
                 # B, N
                 one_hot_action = tf.one_hot(action, depth=N)
                 current_Q = tf.reduce_sum(Q_list * one_hot_action, axis=-1)
@@ -363,6 +382,10 @@ class Learner:
     def _on_train_end(self):
         # Step count
         self.step += 1
+        # Synchronize weights if not initially synchronized
+        if not self.init_sync_completion:
+            self._synchronize()
+            self.init_sync_completion = True
         # Synchronize weights
         if self.soft_sync_ratio > 0.:
             self._soft_synchronize()
@@ -373,15 +396,23 @@ class Learner:
         if self.step % self.upload_freq == 0:
             self._upload()
 
-    def _inference(self, graph, status, mask, mode=None, reward="extrinsic", target=False):
-        if reward == "extrinsic":
+    def _inference(
+        self,
+        graph: tf.Tensor,
+        status: tf.Tensor,
+        mask: tf.Tensor,
+        mode: tf.Tensor = None,
+        reward: tf.Tensor = RewardOption.EXTRINSIC,
+        target: bool = False
+    ):
+        if reward == RewardOption.EXTRINSIC:
             if target:
                 encoder = self.encoder_target
                 decoder = self.decoder_target
             else:
                 encoder = self.encoder
                 decoder = self.decoder
-        elif reward == "intrinsic":
+        elif reward == RewardOption.INTRINSIC:
             if target:
                 encoder = self.rnd_encoder_target
                 decoder = self.rnd_decoder_target
