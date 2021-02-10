@@ -49,6 +49,7 @@ class Actor:
         env_builder: Callable,
         network_builder: Callable,
         logger_builder: Callable,
+        n_nodes: int,
         n_episodes: int = 10000,
         batch_size: int = 128,
         eps_start: float = 1.0,
@@ -78,6 +79,7 @@ class Actor:
         self.logger: TFLogger = None
         self.logger_builder = logger_builder
         self.n_episodes = n_episodes
+        self.n_nodes = n_nodes
         self.batch_size = batch_size
         self.eps_start = eps_start
         self.eps_end = eps_end
@@ -348,7 +350,7 @@ class Actor:
                 self.save(self.save_path)
 
         # Wait for a second so that replay buffer won't be overwhelmed by actor's request
-        time.sleep(1)
+        time.sleep(.5)
 
     def _randint(self, mask) -> tf.Tensor:
         """return random action number based on mask

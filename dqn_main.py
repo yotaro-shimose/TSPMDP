@@ -10,7 +10,7 @@ from tspmdp.dqn.dqn import TSPDQN
 
 if __name__ == '__main__':
     multiprocessing.set_start_method("spawn", True)
-    n_nodes = 100
+    n_nodes = 20
     date = datetime.datetime.today().strftime("%Y%m%d%H%M%S/")
     logdir = str(pathlib.Path("./logs/") / "DQN_EXP" /
                  ("nodes" + str(n_nodes)) / date)
@@ -40,17 +40,18 @@ if __name__ == '__main__':
         "use_graph_context": False,
         "output_scale": -1,
         "buffer_size": 1000000,
-        "eps_start": 0,
-        "eps_end": 0,
+        "eps_start": 0.5,
+        "eps_end": 0.1,
         "annealing_step": 100000,
         "data_push_freq": 5,
-        "download_weights_freq": 10,
+        "download_weights_freq": 5,
         "n_learner_epochs": 1000000,
         "learner_batch_size": 512,
-        "learning_rate": 0.001,
+        "learning_rate": 5e-5,
         "upload_freq": 100,
-        "sync_freq": 100,
-        "soft_sync_ratio": 0.,  # equal or smaller than 0 if you want to hardupdate the target
+        "sync_freq": 10,
+        # equal or smaller than 0 if you want to hardupdate the target
+        "soft_sync_ratio": 1e-3,
         "scale_value_function": False,
         "logdir": logdir,
         "evaluation_freq": 10,
@@ -74,9 +75,9 @@ if __name__ == '__main__':
         "rnd_final_ln": True,
         "rnd_use_graph_context": True,
         "ucb_window_size": 300,
-        "ucb_eps": 0.5,
+        "ucb_eps": 0.3,
         "ucb_beta": 1.,
-        "beta": [0., 0.1, 0.25, 0.5, 1.0],
+        "beta": [0., .1, .25, .5, 1.],
         "gamma": [0.997, 0.997, 0.997, 0.997, 0.997],
     }
     if use_rnd:

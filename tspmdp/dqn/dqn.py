@@ -202,6 +202,7 @@ class TSPDQN:
             env_builder=env_builder,
             network_builder=network_builder,
             logger_builder=logger_builder,
+            n_nodes=n_nodes,
             n_episodes=n_episodes,
             batch_size=n_parallels,
             eps_start=eps_start,
