@@ -171,6 +171,7 @@ class Learner:
         done,
         mode=None,  # B, M one-hot vector
     ):
+        metrics = dict()
         # n_nodes
         N = mask.shape[-1]
         action = tf.squeeze(action)
@@ -202,6 +203,7 @@ class Learner:
             *next_inputs, reward=RewardOption.EXTRINSIC, target=False)
         next_Q_list = tf.identity(next_Q_e_list)
         if self.use_rnd:
+            non_rnd_action = tf.math.argmax(next_Q_list, axis=-1)
             # B, N
             next_Q_i_list = self._inference(
                 *next_inputs, reward=RewardOption.INTRINSIC, target=False)
@@ -209,12 +211,22 @@ class Learner:
                 tf.expand_dims(beta, -1) * next_Q_i_list
         else:
             next_Q_i_list = None
+            non_rnd_action = None
 
-        # B, N
-        one_hot_next_action = tf.one_hot(
-            tf.math.argmax(next_Q_list, axis=-1), depth=N)
+        # B
+        next_action = tf.math.argmax(next_Q_list, axis=-1)
+
+        # log ratio of actions changed by rnd
+        if self.use_rnd:
+            unchanged = tf.cast(non_rnd_action == next_action, tf.float32)
+            size = tf.cast(tf.size(unchanged), tf.float32)
+            metrics.update({
+                "changed_ratio": tf.reduce_sum(1 - unchanged) / size
+            })
 
         # Compute extrinsic target
+        # B, N
+        one_hot_next_action = tf.one_hot(next_action, depth=N)
         # B
         next_Q_e_list = self._inference(
             *next_inputs, reward=RewardOption.EXTRINSIC, target=True)
@@ -264,11 +276,11 @@ class Learner:
         #     self.extrinsic_tc_optimizer.apply_gradients(zip(
         #         gradient, self.encoder.trainable_variables + self.decoder.trainable_variables))
 
-        metrics = {
+        metrics.update({
             "extrinsic td loss": td_loss,
             # "extrinsic tc loss": tc_loss
             "reward_std": tf.math.reduce_std(reward)
-        }
+        })
 
         if self.use_rnd:
 

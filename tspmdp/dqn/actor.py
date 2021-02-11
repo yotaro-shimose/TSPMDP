@@ -241,9 +241,16 @@ class Actor:
             }
             # feed mode vector as decoder input when using rnd
             if self.use_rnd:
-                decoder_input.append(self.ucb.mode)
+                # mode should be zero during evaluation
+                if training:
+                    mode = self.ucb.mode
+                else:
+                    shape = (self.batch_size,)
+                    mode = tf.one_hot(tf.zeros(
+                        shape=shape, dtype=tf.int32), depth=self.ucb.mode.shape[-1], dtype=tf.int32)
+                decoder_input.append(mode)
                 rnd_decoder_input = [
-                    rnd_graph_embedding, status, mask, self.ucb.mode]
+                    rnd_graph_embedding, status, mask, mode]
                 inputs.update(
                     {"rnd_decoder_input": rnd_decoder_input})
 

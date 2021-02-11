@@ -82,11 +82,12 @@ class CustomizableQDecoder(tf.keras.models.Model):
             self.mha = MHAClass(**mha_args)
         self.accept_mode = accept_mode
         self.output_scale = output_scale
-        # For Dueling Network Value Function
-        self.value_attention = tf.keras.layers.MultiHeadAttention(
-            num_heads=n_heads,
-            key_dim=d_key,
-            output_shape=(1,))
+        # # For Dueling Network Value Function
+        # self.value_attention = tf.keras.layers.MultiHeadAttention(
+        #     num_heads=n_heads,
+        #     key_dim=d_key,
+        #     output_shape=(1,))
+        self.query_normalization = tf.keras.layers.LayerNormalization()
 
     def build(self, input_shape):
         d_model = input_shape[0][-1]
@@ -135,6 +136,7 @@ class CustomizableQDecoder(tf.keras.models.Model):
         Returns:
             [type]: [description]
         """
+        query = self.query_normalization(query)
         Q = tf.matmul(query, self.wq)
         K = tf.matmul(H, self.wk)
         scale = tf.sqrt(float(self.d_key))
@@ -142,15 +144,16 @@ class CustomizableQDecoder(tf.keras.models.Model):
         advantage = tf.matmul(Q, K, transpose_b=True) / scale
         # Dueling architecture
         # B, 1, 1
-        value = self.value_attention(query, H, H, mask)
+        # value = self.value_attention(query, H, H, mask)
         # Apply tanh activation
         if self.output_scale > 0:
             advantage = self.output_scale * tf.tanh(advantage)
-            value = self.output_scale * tf.tanh(value)
-        # B, 1, N
-        advantage = advantage - tf.stop_gradient(masked_mean(advantage, mask))
-        # B, 1, N
-        q_value = value + advantage
+            # value = self.output_scale * tf.tanh(value)
+        q_value = advantage
+        # # B, 1, N
+        # advantage = advantage - tf.stop_gradient(masked_mean(advantage, mask))
+        # # B, 1, N
+        # q_value = value + advantage
         # B, 1, N
         mask = tf.cast(mask, tf.float32)
         mask = (1 - mask) * (-INFINITY)

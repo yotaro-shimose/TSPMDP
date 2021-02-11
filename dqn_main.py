@@ -42,7 +42,7 @@ if __name__ == '__main__':
         "buffer_size": 1000000,
         "eps_start": 0.5,
         "eps_end": 0.1,
-        "annealing_step": 100000,
+        "annealing_step": 300000,
         "data_push_freq": 5,
         "download_weights_freq": 5,
         "n_learner_epochs": 1000000,
@@ -51,7 +51,7 @@ if __name__ == '__main__':
         "upload_freq": 100,
         "sync_freq": 10,
         # equal or smaller than 0 if you want to hardupdate the target
-        "soft_sync_ratio": 1e-3,
+        "soft_sync_ratio": 1e-4,
         "scale_value_function": False,
         "logdir": logdir,
         "evaluation_freq": 10,
