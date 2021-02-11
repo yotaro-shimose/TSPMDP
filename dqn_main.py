@@ -47,11 +47,11 @@ if __name__ == '__main__':
         "download_weights_freq": 5,
         "n_learner_epochs": 1000000,
         "learner_batch_size": 512,
-        "learning_rate": 5e-5,
+        "learning_rate": 3e-6,
         "upload_freq": 100,
         "sync_freq": 10,
         # equal or smaller than 0 if you want to hardupdate the target
-        "soft_sync_ratio": 1e-4,
+        "soft_sync_ratio": 1e-3,
         "scale_value_function": False,
         "logdir": logdir,
         "evaluation_freq": 10,

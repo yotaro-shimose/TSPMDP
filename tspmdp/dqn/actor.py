@@ -146,13 +146,14 @@ class Actor:
             self.load(self.load_path)
 
     def start(self):
-        # This method can be executed in subprocess
-        self._initialize()
-        for episode in range(self.n_episodes):
-            metrics = self._episode(training=True)
-            if self.logger:
-                self.logger.log(metrics, episode)
-            self._on_episode_end()
+        with tf.device("/gpu:1"):
+            # This method can be executed in subprocess
+            self._initialize()
+            for episode in range(self.n_episodes):
+                metrics = self._episode(training=True)
+                if self.logger:
+                    self.logger.log(metrics, episode)
+                self._on_episode_end()
 
     def _act(
         self,
