@@ -9,6 +9,7 @@ from tspmdp.env import TSPMDP
 from tspmdp.expert_data_generator import load_expert_data
 from tspmdp.logger import TFLogger
 from tspmdp.modules.functions import get_args
+from tspmdp.modules.lr_scheduler import LRScheduler
 from tspmdp.modules.rnd import RNDBuilder
 from tspmdp.network_builder import CustomizableNetworkBuilder
 
@@ -40,6 +41,18 @@ def create_server_args(size, n_nodes, n_step, gamma, n_modes):
         "env_dict": env_dict,
         # "n_step_dict": Nstep
     }
+
+
+class LRSchedulerBuilder:
+    def __init__(self, maximum_lr: float, warmup_steps: int = 8000):
+        self.maximum_lr = maximum_lr
+        self.warmup_steps = warmup_steps
+
+    def __call__(self):
+        return LRScheduler(
+            maximum_lr=self.maximum_lr,
+            warmup_steps=self.warmup_steps,
+        )
 
 
 class EnvBuilder:
@@ -118,7 +131,8 @@ class TSPDQN:
         load_path: str = None,
         n_learner_epochs: int = 1000000,
         learner_batch_size: int = 128,
-        learning_rate: float = 1e-3,
+        maximum_lr: float = 1e-3,
+        warmup_steps: int = 8000,
         upload_freq: int = 100,
         sync_freq: int = 50,
         soft_sync_ratio: float = 0.0001,
@@ -193,6 +207,11 @@ class TSPDQN:
         else:
             rnd_builder = None
 
+        lr_scheduler_builder = LRSchedulerBuilder(
+            maximum_lr=maximum_lr,
+            warmup_steps=warmup_steps,
+        )
+
         # Define env_builder
         env_builder = EnvBuilder(
             batch_size=n_parallels, n_nodes=n_nodes, reward_on_episode=reward_on_episode)
@@ -228,7 +247,7 @@ class TSPDQN:
             logger_builder=logger_builder,
             n_epochs=n_learner_epochs,
             batch_size=learner_batch_size,
-            learning_rate=learning_rate,
+            lr_scheduler_builder=lr_scheduler_builder,
             n_step=n_step,
             gamma=gamma,
             upload_freq=upload_freq,

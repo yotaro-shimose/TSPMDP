@@ -37,7 +37,7 @@ class Learner:
         logger_builder: Callable,
         n_epochs: int = 1000000,
         batch_size: int = 512,
-        learning_rate: float = 1e-3,
+        lr_scheduler_builder: Callable = None,
         n_step=3,
         gamma=0.9999,
         upload_freq: int = 100,
@@ -68,7 +68,7 @@ class Learner:
         self.extrinsic_tc_optimizer: tf.keras.optimizers.Optimizer = None
         self.intrinsic_td_optimizer: tf.keras.optimizers.Optimizer = None
         self.intrinsic_tc_optimizer: tf.keras.optimizers.Optimizer = None
-        self.learning_rate = learning_rate
+        self.lr_scheduler_builder = lr_scheduler_builder
         self.n_step = n_step
         self.gamma: Union[List[float], float] = gamma
         self.sync_freq = sync_freq
@@ -99,12 +99,9 @@ class Learner:
         self.encoder_target, self.decoder_target = self.network_builder()
 
         # Build Optimizer
-        self.extrinsic_td_optimizer = tf.keras.optimizers.RMSprop(
-            self.learning_rate, epsilon=1e-4, clipnorm=4)
-        # self.extrinsic_td_optimizer = tf.keras.optimizers.Adam(
-        #     self.learning_rate, epsilon=1e-4, clipnorm=40)
-        # self.extrinsic_td_optimizer = tfa.optimizers.RectifiedAdam(
-        #     self.learning_rate)
+
+        self.extrinsic_td_optimizer = tf.keras.optimizers.Adam(
+            self.lr_scheduler_builder(), epsilon=1e-4, clipnorm=40)
         # self.extrinsic_tc_optimizer = tf.keras.optimizers.Adam(
         #     self.learning_rate)
         # Build logger
@@ -132,12 +129,10 @@ class Learner:
         assert isinstance(self.gamma, list)
         self.beta = tf.expand_dims(tf.constant(self.beta), axis=0)
         self.gamma = tf.expand_dims(tf.constant(self.gamma), axis=0)
-        # self.intrinsic_td_optimizer = tf.keras.optimizers.Adam(
-        #     self.learning_rate, epsilon=1e-4, clipnorm=40)
-        self.intrinsic_td_optimizer = tf.keras.optimizers.RMSprop(
-            self.learning_rate, epsilon=1e-4, clipnorm=40)
+        self.intrinsic_td_optimizer = tf.keras.optimizers.Adam(
+            self.lr_scheduler_builder(), epsilon=1e-4, clipnorm=40)
         # self.intrinsic_tc_optimizer = tf.keras.optimizers.Adam(
-        #     self.learning_rate)
+        #     self.lr_scheduler_builder())
 
     def _train(self):
         expert_batch_size = int(self.batch_size * self.expert_ratio)
@@ -172,6 +167,7 @@ class Learner:
         mode=None,  # B, M one-hot vector
     ):
         metrics = dict()
+
         # n_nodes
         N = mask.shape[-1]
         action = tf.squeeze(action)
