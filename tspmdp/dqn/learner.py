@@ -167,9 +167,7 @@ class Learner:
         mode=None,  # B, M one-hot vector
     ):
         metrics = dict()
-        metrics.update({
-            "learning_rate": self.extrinsic_td_optimizer.l
-        })
+
         # n_nodes
         N = mask.shape[-1]
         action = tf.squeeze(action)

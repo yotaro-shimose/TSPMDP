@@ -47,7 +47,8 @@ if __name__ == '__main__':
         "download_weights_freq": 5,
         "n_learner_epochs": 1000000,
         "learner_batch_size": 512,
-        "learning_rate": 5e-5,
+        "maximum_lr": 5e-5,
+        "warmup_steps": 1,
         "upload_freq": 100,
         "sync_freq": 10,
         # equal or smaller than 0 if you want to hardupdate the target
