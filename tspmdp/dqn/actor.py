@@ -146,7 +146,7 @@ class Actor:
             self.load(self.load_path)
 
     def start(self):
-        # This method can be executed in subprocess
+        # This method should be executed in subprocess
         self._initialize()
         for episode in range(self.n_episodes):
             metrics = self._episode(training=True)

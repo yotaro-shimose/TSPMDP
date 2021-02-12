@@ -52,7 +52,7 @@ if __name__ == '__main__':
         "upload_freq": 100,
         "sync_freq": 10,
         # equal or smaller than 0 if you want to hardupdate the target
-        "soft_sync_ratio": 1e-4,
+        "soft_sync_ratio": 1e-3,
         "scale_value_function": False,
         "logdir": logdir,
         "evaluation_freq": 10,
