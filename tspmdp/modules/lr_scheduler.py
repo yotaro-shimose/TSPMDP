@@ -13,5 +13,4 @@ class LRScheduler(tf.keras.optimizers.schedules.LearningRateSchedule):
         warmup = self.maximum_lr * step / self.warmup_steps
         decay = self.maximum_lr * \
             tf.math.rsqrt(step) / tf.math.rsqrt(self.warmup_steps)
-
         return tf.where(step < self.warmup_steps, warmup, decay)

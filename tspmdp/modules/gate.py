@@ -1,9 +1,10 @@
 import tensorflow as tf
 
 
+@tf.keras.utils.register_keras_serializable()
 class GRUGate(tf.keras.layers.Layer):
-    def __init__(self):
-        super().__init__()
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
     def build(self, input_shape):
         D = input_shape[0][-1]

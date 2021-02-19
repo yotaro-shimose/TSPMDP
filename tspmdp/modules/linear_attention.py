@@ -1,12 +1,18 @@
 import tensorflow as tf
 
 
+from tspmdp.modules.functions import get_args
+
+
+@tf.keras.utils.register_keras_serializable()
 class LinearAttention(tf.keras.layers.Layer):
     def __init__(self, n_omega=64, eps=1e-9, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._built_with_F = False
         self.n_omega = n_omega
         self.eps = eps
+        # save init arguments
+        self.init_args = get_args(offset=1)
 
     def _build_with_F(self, d_feature):
         F = d_feature
@@ -93,7 +99,13 @@ class LinearAttention(tf.keras.layers.Layer):
 
         return qkv / normalizer
 
+    def get_config(self) -> dict:
+        base: dict = super().get_config()
+        base.update(self.init_args)
+        return base
 
+
+@tf.keras.utils.register_keras_serializable()
 class MultiHeadLinearAttention(tf.keras.layers.Layer):
     def __init__(self, d_value=128, d_key=128, n_heads=8, n_omega=64, eps=1e-9, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -103,6 +115,8 @@ class MultiHeadLinearAttention(tf.keras.layers.Layer):
         self.n_heads = n_heads
         self.d_value = d_value
         self.d_key = d_key
+        # save init arguments
+        self.init_args = get_args(offset=1)
         assert n_omega % n_heads == 0, "n_omega must be multiple of n_heads"
         assert d_key % self.n_heads == 0,  "d_key must be multiple of n_heads"
 
@@ -224,3 +238,8 @@ class MultiHeadLinearAttention(tf.keras.layers.Layer):
         qkv = qkv[:, :, :, :-1]
 
         return tf.reshape(qkv / normalizer, (B, T, self.d_value))
+
+    def get_config(self) -> dict:
+        base: dict = super().get_config()
+        base.update(self.init_args)
+        return base

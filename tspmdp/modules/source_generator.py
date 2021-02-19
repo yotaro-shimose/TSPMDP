@@ -1,21 +1,23 @@
 from typing import List
 
 import tensorflow as tf
+from tspmdp.modules.functions import get_args
 
 
 @tf.keras.utils.register_keras_serializable()
 class SourceGenerator(tf.keras.layers.Layer):
 
-    def __init__(self, use_graph_context: bool = True, accept_mode: bool = False):
-        super().__init__()
+    def __init__(self, use_graph_context: bool = True, accept_mode: bool = False, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.flatten = tf.keras.layers.Flatten()
         self.use_graph_context = use_graph_context
         self.ln = tf.keras.layers.LayerNormalization()
         self.accept_mode = accept_mode
+        # save init arguments
+        self.init_args = get_args(offset=1)
 
     def build(self, input_shape):
         _, _, D = input_shape[0]
-        self.vector_dense = tf.keras.layers.Dense(D, activation='relu')
         self.final_dense = tf.keras.layers.Dense(D, activation='relu')
         if self.accept_mode:
             self.mode_dense = tf.keras.layers.Dense(D, activation='relu')
@@ -82,15 +84,12 @@ class SourceGenerator(tf.keras.layers.Layer):
         H = tf.tile(H, [1, indice.shape[1], 1, 1])
 
         # B, F, D
-        indice_embeddings = tf.reduce_max(indice * H, -2)
+        indice_embeddings = tf.reduce_sum(indice * H, -2)
         return indice_embeddings
 
     def get_config(self) -> dict:
-        base = super().get_config()
-        specific = {
-            "use_graph_context": self.use_graph_context
-        }
-        base.update(specific)
+        base: dict = super().get_config()
+        base.update(self.init_args)
         return base
 
 
@@ -99,6 +98,8 @@ class WouterSourceGenerator(tf.keras.layers.Layer):
     def __init__(self):
         super().__init__()
         self.flatten = tf.keras.layers.Flatten()
+        # save init arguments
+        self.init_args = get_args(offset=1)
 
     def build(self, input_shape):
         _, _, D = input_shape[0]
@@ -152,5 +153,10 @@ class WouterSourceGenerator(tf.keras.layers.Layer):
         H = tf.tile(H, [1, indice.shape[1], 1, 1])
 
         # B, F, D
-        indice_embeddings = tf.reduce_max(indice * H, -2)
+        indice_embeddings = tf.reduce_sum(indice * H, -2)
         return indice_embeddings
+
+    def get_config(self) -> dict:
+        base: dict = super().get_config()
+        base.update(self.init_args)
+        return base

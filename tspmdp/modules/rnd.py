@@ -2,6 +2,7 @@ from typing import List, Union
 
 import tensorflow as tf
 from tspmdp.modules.model import RNDNetwork
+from tspmdp.modules.functions import get_args
 
 
 class RNDBuilder:
@@ -81,9 +82,10 @@ class RNDNetworkBuilder:
         )
 
 
+@tf.keras.utils.register_keras_serializable()
 class RandomNetworkDistillation(tf.keras.models.Model):
-    def __init__(self, network_builder: callable, learning_rate: float = 1e-4):
-        super().__init__()
+    def __init__(self, network_builder: callable, learning_rate: float = 1e-4, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         # Random (target) network
         self.random_network: tf.keras.models.Model = network_builder()
         # Exploration network to predict output of random network
@@ -101,6 +103,8 @@ class RandomNetworkDistillation(tf.keras.models.Model):
         self.mean_squared = tf.Variable(tf.constant(0, dtype=tf.float32))
         # E[x]
         self.mean = tf.Variable(tf.constant(0, dtype=tf.float32))
+        # save init arguments
+        self.init_args = get_args(offset=1)
 
     def call(self, observation: Union[List[tf.Tensor], tf.Tensor]):
         # Get batch size (accepts list of tensors in this example)
@@ -108,6 +112,7 @@ class RandomNetworkDistillation(tf.keras.models.Model):
             B = observation[0].shape[0]
         else:
             B = observation.shape[0]
+
         # Compute Target
         random_embedding = self.random_network(observation)
         # New step count will be sum of step count + B
@@ -131,3 +136,13 @@ class RandomNetworkDistillation(tf.keras.models.Model):
         # Update step count
         self.step_count.assign_add(B)
         return (error - self.mean) / tf.sqrt(var)
+
+    def get_config(self) -> dict:
+        base: dict = super().get_config()
+        base.update(self.init_args)
+        return base
+
+    @classmethod
+    def from_config(cls, config: dict, custom_objects: dict):
+        layer = tf.keras.layers.deserialize(config, custom_objects)
+        return layer

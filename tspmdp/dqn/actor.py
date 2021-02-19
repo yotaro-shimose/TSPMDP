@@ -417,16 +417,26 @@ class Actor:
     def save(self, path: str):
         encoder_path = pathlib.Path(path) / "encoder"
         decoder_path = pathlib.Path(path) / "decoder"
-        self.encoder.save_weights(encoder_path)
-        self.decoder.save_weights(decoder_path)
+
+        self.encoder.save(encoder_path)
+        self.decoder.save(decoder_path)
+
+        if self.use_rnd:
+            encoder_path = pathlib.Path(path) / "rnd_encoder"
+            decoder_path = pathlib.Path(path) / "rnd_decoder"
+            self.rnd_encoder.save(encoder_path)
+            self.rnd_decoder.save(decoder_path)
 
     def load(self, path: str):
-        if not self.encoder.built or not self.decoder.built:
-            self._build()
         encoder_path = pathlib.Path(path) / "encoder"
         decoder_path = pathlib.Path(path) / "decoder"
-        self.encoder.load_weights(encoder_path)
-        self.decoder.load_weights(decoder_path)
+        self.encoder = tf.keras.models.load_model(encoder_path)
+        self.decoder = tf.keras.models.load_model(decoder_path)
+        if self.use_rnd:
+            encoder_path = pathlib.Path(path) / "rnd_encoder"
+            decoder_path = pathlib.Path(path) / "rnd_decoder"
+            self.rnd_encoder = tf.keras.models.load_model(encoder_path)
+            self.rnd_decoder = tf.keras.models.load_model(decoder_path)
 
 
 class SlidingWindowUCB:

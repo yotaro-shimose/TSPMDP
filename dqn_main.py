@@ -4,10 +4,6 @@ import multiprocessing
 from tspmdp.dqn.dqn import TSPDQN
 
 
-# TODO
-# - make actor to choose exploration mode using sliding UCB
-# - parametrize to switch RND
-
 if __name__ == '__main__':
     multiprocessing.set_start_method("spawn", True)
     n_nodes = 20
@@ -47,16 +43,16 @@ if __name__ == '__main__':
         "download_weights_freq": 5,
         "n_learner_epochs": 1000000,
         "learner_batch_size": 512,
-        "maximum_lr": 5e-5,
+        "maximum_lr": 1e-4,
         "warmup_steps": 1,
         "upload_freq": 100,
-        "sync_freq": 10,
+        "sync_freq": 1000,
         # equal or smaller than 0 if you want to hardupdate the target
         "soft_sync_ratio": 1e-3,
         "scale_value_function": False,
         "logdir": logdir,
         "evaluation_freq": 10,
-        "reward_on_episode": False,
+        "reward_on_episode": True,
         "save_path": save_path,
         "load_path": None,
         "expert_ratio": 0.,
