@@ -1,3 +1,5 @@
+import inspect
+from typing import Callable
 import tensorflow as tf
 
 
@@ -27,3 +29,16 @@ def sample_action(p: tf.Tensor):
     tf.assert_rank(p, 2)
     # B, 1
     return tf.squeeze(tf.random.categorical(tf.math.log(p), 1, dtype=tf.int32), axis=-1)
+
+
+def get_args(offset: int = None) -> dict:
+    parent_frame = inspect.currentframe().f_back
+    info = inspect.getargvalues(parent_frame)
+    return {key: info.locals[key] for key in info.args[offset:]}
+
+
+def cut_off(func: Callable, arguments: dict):
+    valid_arguments = inspect.signature(func).parameters
+    parameters = {key: value for key,
+                  value in arguments.items() if key in valid_arguments}
+    return parameters

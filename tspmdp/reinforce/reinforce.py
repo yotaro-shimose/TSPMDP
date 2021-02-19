@@ -1,11 +1,11 @@
+import pathlib
 from typing import Callable
 
 import tensorflow as tf
 import tensorflow_probability as tfp
 from tspmdp.env import TSPMDP
 from tspmdp.modules.functions import int_not, sample_action
-
-tf.config.experimental_run_functions_eagerly(True)
+from tspmdp.logger import TFLogger
 
 
 @tf.function
@@ -37,7 +37,8 @@ def ttest_smaller(x: tf.Tensor, y: tf.Tensor, significance: float = tf.constant(
 class Reinforce:
     def __init__(
         self,
-        network_builder: Callable,
+        encoder_builder: Callable,
+        decoder_builder: Callable,
         n_epochs: int = 10000,
         n_nodes: int = 20,
         n_iterations: int = 10,
@@ -45,7 +46,7 @@ class Reinforce:
         n_parallels: int = 5,
         learning_rate: float = 1e-5,
         significance: float = 0.15,
-        logger=None,
+        logger: TFLogger = None,
         save_dir="./models/",
         load_dir=None,
     ):
@@ -57,8 +58,10 @@ class Reinforce:
         self.baseline_env = TSPMDP(batch_size=n_parallels, n_nodes=n_nodes)
         self.save_dir = save_dir
 
-        self.online_network: tf.keras.models.Model = network_builder()
-        self.baseline_network: tf.keras.models.Model = network_builder()
+        self.online_encoder: tf.keras.models.Model = encoder_builder()
+        self.online_decoder: tf.keras.models.Model = decoder_builder()
+        self.baseline_encoder: tf.keras.models.Model = encoder_builder()
+        self.baseline_decoder: tf.keras.models.Model = decoder_builder()
 
         if load_dir:
             self.load(load_dir)
@@ -79,8 +82,8 @@ class Reinforce:
                     f"Epoch: {epoch}, Validation passed")
                 if self.save_dir:
                     self.save(self.save_dir)
-                self.synchronize(self.online_network,
-                                 self.baseline_network)
+                self.synchronize(self.online_encoder, self.baseline_encoder)
+                self.synchronize(self.online_decoder, self.baseline_decoder)
 
     @tf.function
     def train_on_episode(self):
@@ -93,24 +96,26 @@ class Reinforce:
         # Copy env list for baseline.
         self.baseline_env.import_states(self.online_env.export_states())
 
+        # Greedy rollout
+        base_rewards, _ = self.play_game(
+            env=self.baseline_env,
+            encoder=self.baseline_encoder,
+            decoder=self.baseline_decoder,
+            greedy=tf.constant(True)
+        )
         with tf.GradientTape() as tape:
-            # Greedy rollout
-            base_rewards, _ = self.play_game(
-                env=self.baseline_env,
-                network=self.baseline_network,
-                greedy=tf.constant(True)
-            )
-
             # Execute an episode for each online environment
             online_rewards, log_likelihood = self.play_game(
                 env=self.online_env,
-                network=self.online_network,
+                encoder=self.online_encoder,
+                decoder=self.online_decoder,
                 greedy=tf.constant(False)
             )
 
             # ** Learn from experience ** #
 
-            trainable_variables = self.online_network.trainable_variables
+            trainable_variables = self.online_encoder.trainable_variables + \
+                self.online_decoder.trainable_variables
             excess_cost = tf.stop_gradient((base_rewards - online_rewards))
             # Get policy gradient to apply to our network
             policy_gradient = tape.gradient(tf.reduce_mean(
@@ -133,7 +138,8 @@ class Reinforce:
     def play_game(
         self,
         env: TSPMDP,
-        network: tf.keras.models.Model,
+        encoder: tf.keras.models.Model,
+        decoder: tf.keras.models.Model,
         greedy: tf.Tensor = tf.constant(False)
     ):
         """play games in parallels
@@ -158,11 +164,13 @@ class Reinforce:
         divisor: tf.Tensor = tf.zeros(dones.shape, dtype=tf.float32)
         # shape variables
         shape_B = dones.shape
+        # Encode before loop begins
+        graph_embeddings = encoder(states[0])
         # Note AutoGraph can't change tensor shape and dtype in while loop
         while tf.math.logical_not(tf.reduce_all(dones == ones)):
             # Get policy
             # B, N
-            policies = network(states)
+            policies = decoder([graph_embeddings, states[1], states[2]])
 
             # Determine actions to take
             if greedy:
@@ -207,14 +215,17 @@ class Reinforce:
 
     def build(self):
         # build
-        state = self.online_env.reset()
-        self.online_network(state)
-        self.baseline_network(state)
+        graph, *other = self.online_env.reset()
+        embedding = self.online_encoder(graph)
+        self.baseline_encoder(graph)
+        inputs = [embedding] + other
+        self.online_decoder(inputs)
+        self.baseline_decoder(inputs)
 
     def synchronize(self, original: tf.keras.models.Model, target: tf.keras.models.Model):
         target.set_weights(original.get_weights())
 
-    @tf.function
+    @ tf.function
     def validate(self):
 
         # ** Initialization ** #
@@ -226,25 +237,36 @@ class Reinforce:
 
         base_rewards, _ = self.play_game(
             env=self.baseline_env,
-            network=self.baseline_network,
+            encoder=self.baseline_encoder,
+            decoder=self.baseline_decoder,
             greedy=tf.constant(True)
         )
 
         # Execute an episode for each online environment
         online_rewards, _ = self.play_game(
             env=self.online_env,
-            network=self.online_network,
+            encoder=self.online_encoder,
+            decoder=self.online_decoder,
             greedy=tf.constant(False)
         )
 
         return ttest_smaller(base_rewards, online_rewards, self.significance)
 
     def save(self, path):
-        self.online_network.save_weights(path)
+        base_path = pathlib.Path(path)
+        encoder_path = base_path / "encoder/"
+        decoder_path = base_path / "decoder/"
+        self.online_encoder.save_weights(encoder_path)
+        self.online_decoder.save_weights(decoder_path)
 
     def load(self, path):
-        self.online_network.load_weights(path)
-        self.baseline_network.load_weights(path)
+        base_path = pathlib.Path(path)
+        encoder_path = base_path / "encoder/"
+        decoder_path = base_path / "decoder/"
+        self.online_encoder.load_weights(encoder_path)
+        self.online_decoder.load_weights(decoder_path)
+        self.baseline_encoder.load_weights(encoder_path)
+        self.baseline_encoder.load_weights(decoder_path)
 
     def demo(self, graph_size=None):
         raise NotImplementedError

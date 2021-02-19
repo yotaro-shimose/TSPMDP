@@ -11,6 +11,14 @@ __pycache__
 events.out.tfevents.*
 
 # weight data
-.data-*
-.index
-checkpoint
+models/*
+
+# temp
+temp.py
+
+# expert data
+*.dat
+
+# nohup output
+nohup.out
+core

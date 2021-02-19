@@ -1,0 +1,9 @@
+flake8
+pytest
+dm-tree
+cpprb
+ortools
+autopep8
+tensorflow-addons
+tensorflow-probability
+gym
