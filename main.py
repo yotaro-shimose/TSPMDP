@@ -34,10 +34,10 @@ if __name__ == '__main__':
     depth = 6
     th_range = 10
     d_hidden = 128
-    n_nodes = 100
+    n_nodes = 20
     n_parallels = 64
     n_omega = 128
-    encoder = "preln"
+    encoder = "wouter"
     decoder = "wouter"
 
     def preln():

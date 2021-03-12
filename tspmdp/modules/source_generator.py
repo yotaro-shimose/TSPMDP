@@ -82,7 +82,7 @@ class SourceGenerator(tf.keras.layers.Layer):
         H = tf.tile(H, [1, indice.shape[1], 1, 1])
 
         # B, F, D
-        indice_embeddings = tf.reduce_max(indice * H, -2)
+        indice_embeddings = tf.reduce_sum(indice * H, -2)
         return indice_embeddings
 
     def get_config(self) -> dict:
@@ -152,5 +152,5 @@ class WouterSourceGenerator(tf.keras.layers.Layer):
         H = tf.tile(H, [1, indice.shape[1], 1, 1])
 
         # B, F, D
-        indice_embeddings = tf.reduce_max(indice * H, -2)
+        indice_embeddings = tf.reduce_sum(indice * H, -2)
         return indice_embeddings

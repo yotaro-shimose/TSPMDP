@@ -1,7 +1,5 @@
 # Attention! Learn to Solve Routing Problems!
 
-Paper: https://arxiv.org/abs/1803.08475
-
 このリポジトリはWouterらの[巡回セールスマン問題をTransformer + 深層強化学習で解く論文](https://arxiv.org/abs/1803.08475)のTensorFlow2による再現実装と改良を加えたリポジトリです。
 
 改良点はニューラルネットワークアーキテクチャを最新のものに変えた点で、dqn_main.pyに記載されているパラメータを変更することで
